@@ -249,7 +249,9 @@ def _backup_with_retry(backup: object, *, retries: int = 8, delay: float = 0.1) 
         except apsw.BusyError:
             if attempt + 1 == retries:
                 raise
-            time.sleep(delay * (attempt + 1))
+            delay_time = delay * 2**attempt
+            print(f"Backup busy, retrying in {delay_time:.1f}s (attempt {attempt + 1}/{retries})...")
+            time.sleep(delay_time)
 
 
 class Migrate:
