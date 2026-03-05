@@ -1,4 +1,6 @@
 # WIP
+- find by arbitraqt sql
+- allow list[str] as field type, inner types are just for static analysis, but it is always stored as json
 - Improved status detail for declarative migrations, e.g. show diff between file and db object
 - add db schema dump to migrations
 - make convertions depend on model not on db type affinity ( view aggs fail herez)
@@ -44,6 +46,10 @@
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
 # Bugs
+```n\.venv\Lib\site-packages\tuplesaver\migrate.py", line 247, in _backup_with_retry
+backup.step(-1) # type: ignore[union-attr]
+~~~~~~~~~~~^^^^
+apsw.BusyError: not an error```
 
 
 # Testing
