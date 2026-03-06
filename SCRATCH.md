@@ -213,47 +213,76 @@ Migrations are done in a DSL with an external
 ### relationships defined with `has_many`, `belongs_to`, `has_one`, `has_and_belongs_to_many`,
 
 
-# One day do a Cython implementation for faster field descriptor access
-# field_descriptor.pyx
-# Cython implementation of FieldDescriptor for better performance
+# Migration System
 
-``` python
-from typing import NamedTuple
+Manage development and application of SQLite schema migrations.
 
-cdef class Column:
-    """Fast Column class using Cython"""
-    cdef public str name
-    cdef public object coltype
+- Ensure schema matches TableRow models
+- Ensure migrations apply cleanly to production
+- Triage migration conflicts between devs
+- Auto-generate obvious migrations
 
-    def __init__(self, str name, object coltype):
-        self.name = name
-        self.coltype = coltype
+## File Layout
 
-    def __repr__(self):
-        return f"Column(name={self.name!r}, coltype={self.coltype!r})"
+```
+mydb.sqlite                    # working DB (refresh from production)
+mydb.sqlite.ref                # reference DB (production snapshot, immutable)
+mydb.sqlite.migrations/
+    001.create_users.sql
+    002.add_email_column.sql
+mydb.sqlite.bak/
+    2026-11-19T14-30-05.123456.000.mydb.sqlite
+    2026-11-20T09-15-42.456789.001.mydb.sqlite
+```
 
-    def __eq__(self, other):
-        if not isinstance(other, Column):
-            return False
-        return self.name == other.name and self.coltype == other.coltype
+## States
 
+Priority: ERROR > CONFLICTED > DIVERGED > PENDING > MISMATCH > CURRENT.
 
-cdef class CythonFieldDescriptor:
-    """High-performance field descriptor using Cython"""
-    cdef public Column column
-    cdef public int index
+| State | Meaning | Fix |
+|-------|---------|-----|
+| `CURRENT` | Schema, scripts, and DB all agree | — |
+| `MISMATCH` | Models differ from DB, no script yet | `generate()` → PENDING |
+| `PENDING` | Unapplied migration scripts exist | `apply()` → MISMATCH or CURRENT |
+| `DIVERGED` | Scripts differ from working DB (no ref) | `restore_db()` → PENDING |
+| `CONFLICTED` | Scripts differ from ref DB | `restore_scripts()` → CURRENT or DIVERGED |
+| `ERROR` | Bad migration files (gaps, dupes) | Manual fix |
 
-    def __init__(self, Column column, int index):
-        self.column = column
-        self.index = index
+### State Transitions Diagram
 
-    def __get__(self, object instance, object owner):
-        # Fast path: if instance is None, return Column
-        if instance is None:
-            return self.column
-        # Fast path: direct tuple indexing for instances
-        return instance[self.index]
+```
+ start ────┐
+           v
+         ┌──────────┐
+         │  check() │<──────────────────────────────yes─────┐
+         └───┬──────┘                                       │
+             │                                            state changed?─────no─────>done
+   ┌──────┬──┴───┬─────────┬───────────┬──────────┐             ^
+   v      v      v         v           v          v             │
+ ERROR  CONFL  DIVERG    PENDING    MISMATCH   CURRENT          │
+   │      │      │         │           │          │             │
+   v      v      v         v           v          v             │
+ exit 1  restore restore  backup &  generate   exit 0           │
+         scripts  db      apply all                             │
+           │      │         │                                   │
+           └──────┴─────────┴──────────recurse──────────────────┘
+```
 
-    def __repr__(self):
-        return f"CythonFieldDescriptor(column={self.column}, index={self.index})"
+Has both a Python API and CLI, which share the same underlying logic and state management. The CLI is just a thin wrapper around the API, so any action you can do in the CLI can also be done programmatically, and vice versa.
+
+## CLI
+Entry point: `tuplesaver-migrate` (or `python -m tuplesaver.migrate_cli`)
+
+### Global flags (required, with pyproject.toml fallback)
+
+```
+--db-path PATH      Path to working DB
+--models-module MODULE   Dotted module path, e.g. myapp.models
+```
+
+Set permanently in `./pyproject.toml`:
+```toml
+[tool.tuplesaver]
+db_path = "data/mydb.sqlite"
+models_module = "myapp.models"
 ```

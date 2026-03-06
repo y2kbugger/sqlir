@@ -1,61 +1,53 @@
 # WIP
-- find by arbitraqt sql
+- find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
 - allow list[str] as field type, inner types are just for static analysis, but it is always stored as json
-- Improved status detail for declarative migrations, e.g. show diff between file and db object
-- add db schema dump to migrations
-- make convertions depend on model not on db type affinity ( view aggs fail herez)
-- Explore other gains/implications from making a specialized convert fuctions up-front.
-    - adapts/converts must be known up front.
-    - already raises, but what about redefines, are redefines blocked?
-        - or redefines could just blow the cache
-    - require passing into engine?
+- add db table dump to migrations
 
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
 - Move lazy proxy descriptors to the metaclass
-- Find a remove unused exceptions
 - Harmonize typing of type[Row] to RowMeta (i think)
-- fix all ty and ruff errors in all files
-- test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
+- fix ty and ruff errors in all files
 - move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
+- convert readme and docs and package name away from tuplesaver now that we don't save tuples
+- backfill __tablename__ when it is missing, e.g. just use the class name, test this
+- make adapt/convert registration global, store cached converter on the model. (makes engine creation lighter)
 
 ## APSW Integration
-- Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
+- Document how any type that implements buffer is auto adapted and you only need to add converter for it (might be annonying if trying to just pickle a numpy array)
 - combine rowtrace for type converting types and lazy maker all together
     pragma user_version and pragma application_id for versioning and migrations
     https://rogerbinns.github.io/apsw/tips.html#query-patterns
     and maybe don't make it use rowtrace??
-- Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
-  - how often do we need to control fetchall vs fetchmany.
-  - what about leveraging get?
-  - what about fetch one only?
-  - Also consider the error of leaving cursor unfinalized.
 
-## Other
-  Delete idempot? no raise?
-  update(instance, colum="value) api creates  an abiguity (if records are mutable) basically right now it ignores mutations to the instance and only updates the fields in the kwargs.
+## Engine API congruence and ergonomics
+__how to make query.select more integrated to Engine so its more like find__
+- Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
+    - how often do we need to control fetchall vs fetchmany.
+    - what about leveraging get?
+    - what about fetch one only?
+    - Also consider the error of leaving cursor unfinalized.
+- is delete_all good?
+- think about mutable immediate vs immutable explicit and ergonomics in example.
+- Delete idempot? no raise?
+- update(instance, colum="value) api creates  an abiguity (if records are mutable) basically right now it ignores mutations to the instance and only updates the fields in the kwargs.
     - Lazy Immuatable Records would fix this.
     - Also consider typed ID's again. This would fix up the api nicely, especially if tied into FastAPI path params to deliver the correct type to the endpoint, and then just pass that to the delete/update method.
         - This would also let us eliminate the overloaded delete and update methods completed and just require an explicit model_instance.id to be passed.
-- how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
     - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
-    - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, f"{MyModel.name} = 'Bart'")`
-    - maybe we can rely on our getattribute hack to make fstrings work without AST hacking.
-- think about mutable immediate vs immutable explicit and ergonomics in example.
-- convert readme and docs and package name away from tuplesaver now that we don't save tuples
+- Also allow an fstring for the where clause, e.g. `engine.find(MyModel, t"{MyModel.name} = 'Bart'")`??
 
 # Bugs
-```n\.venv\Lib\site-packages\tuplesaver\migrate.py", line 247, in _backup_with_retry
-backup.step(-1) # type: ignore[union-attr]
-~~~~~~~~~~~^^^^
-apsw.BusyError: not an error```
+- Switch to semi joins in sql query generator auto-joiner
+    - otherwise, fanout happen. Add regression test for this.
 
 
 # Testing
 - Test delete by id (no match) and update (via save) id (no match)?
 - Test that basic engine crud operation emit only the expected statements, e.g. no select before update, etc. DO FOR ALL Engine OPERATIONS
 - test `Any` type on TableRow models. Ban? Allow?
+- test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
 - relax eager enforcement of FK Models being registered
     - Test case for this
 - Test case that you cannot subclass a model, e.g.
@@ -88,83 +80,29 @@ apsw.BusyError: not an error```
 - Test duplicate joins in query.select deduplicates
 - Benchmark and test connection creation and closing
 - benchmark model creation, field access, hashing, and memory footprint vs plain unpatched NamedTuple, and dataclass,
+- Test that you may not reregister an adapt-convert pair
+- Ensure test exists for model with unregistered field type, and that it raises UnregisteredFieldTypeError
+
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
 - use the assert_type from typing to check type hints
   - Test types on select (both decorator and non)
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
-- UnregisteredFieldTypeError
+
+## API comparison docs
+- take
+- pluck
+- exists
+- insert many?
 
 
 # Next
-- migrate.md combine with scratch.md
-- insert many?
-- backfill __tablename__ when it is missing, e.g. just use the class name, test this
+- Find a remove unused exceptions
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
-- maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
 
-## engine.update
-To only some fields, on a single existing row, pull id from row:
-```python
-engine.update(id, name="Apple")
-```
-```sql
-update MyModel set name = 'Apple' where id = 42;
-```
-
-## engine.upsert
-| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
-
-infered constraits from DB
-- https://sqlite.org/syntax/column-def.html
-- https://sqlite.org/syntax/column-constraint.html
-- We can just use migrations to add constraints and make db the source of truth.
-- We don't actually even need to read them in except to add validation on upserts (ie, only allow upserting on sets of unique columns)
-
-
-```sql
-create table XXX (
-    id integer primary key,
-    name text,
-    place text,
-    value int
-);
--- the obligate unique constraint
-CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
-
--- make upsert on name,place combo
-insert into XXX (name, place, value) values ('a', 'b', 777)
-on conflict(name, place) do update set value = excluded.value;
--- or even just allow it to happen on any conflict (just set all non-id fields)
--- This gets a little tricky with existing data, but if we follow api of insert
---   and up, this makes sense, all fields are persisted (in either case insert or
---   update)
-insert into XXX (name, place, value) values ('a', 'b', 888)
-on conflict
-    do update
-        set name = excluded.name, place = excluded.place, value = excluded.value;
-```
-
-This is the user code
-```python
-class XXX(NamedTuple):
-    id: int | None
-    name: str
-    place: str
-    value: int
-
-    _meta = Meta(
-        unique_contraints=[('name','place')]
-    )
-
-engine.ensure_table_created(XXX)
-engine.upsert(XXX(name='a', place='b', value=777))
-engine.upsert(XXX(name='a', place='c', value=888))
-
-```
 
 ## Backpop
 - Also considder one to one relationships that backpop to a single instance rather than a list
@@ -253,7 +191,26 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 
 # Later
+## leverage tstring for query-ten avoid AST hacking
 ## JSONB format
+
+## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
+Atomic table replacement that minimizes write-lock duration. Only the rename step holds the lock; all data loading and index building happen outside the critical section.
+
+1. **Capture schema of T** — `SELECT sql FROM sqlite_schema` for the table, its indexes (`sql IS NOT NULL`), and triggers
+2. **Create shadow table `T__new`** — rewrite captured `CREATE TABLE` replacing `T` → `T__new`
+3. **Load data into `T__new`** — all ETL happens here; no production objects touched
+4. **Build indexes on `T__new`** — rewrite each index: table ref `T` → `T__new`, name `idx` → `idx__new`
+5. **Atomic swap** (only critical section):
+   ```sql
+   BEGIN IMMEDIATE;
+   ALTER TABLE T RENAME TO T__old;
+   ALTER TABLE T__new RENAME TO T;
+   COMMIT;
+   ```
+   Rename updates FK/view references automatically (SQLite >= 3.26). Triggers and indexes move with `T__old`.
+6. **Recreate triggers** — execute captured trigger SQL unchanged; they attach to the current `T`
+7. **Optional cleanup** — `DROP TABLE T__old;` (or keep for rollback)
 
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
@@ -263,87 +220,58 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
   - This could also be an off ramp from engine.select to a more generic query builder, e.g. `engine.query(Model, sql, params)`
 
 
-
 ## Foreign Key enforcement
 Off by default, but can be enabled with
 - `PRAGMA foreign_keys = true;`
 
-## DDL 2.0, e.g. future of `engine.ensure_table_created`
-- maybe leave mutation/creation up to migrations. Then either
-  - leave "ensure table created" to register Model
-  - or register Model lazily upon first use. **favorite**
-- However it works, i would really like to be able to have models scoped to a
-single module, without any import dances one way or another.eg. importing
-blueprints/app objects, or importing models just to register them.
-- confusion between ensure created and check created and "auto create"......
-
 ## Migrations
 - consider https://martinfowler.com/articles/evodb.html
-- Auto add column(s) to table if they don't exist
-  - or maybe just let this be the easy way to teach people to use explicit migrations
-- Maybe store all versions of models in the db in additions to migrations script.
-  - What about when "blowing away" the db?
-  - what value does this add?
-    - Could it help generate scripts?
-    - could it just give insight to recent changes during dev?
-- Have a dedicated external entrypoint to control migrations and rollback ala RoR AR
-- Use sqlite backup api to snapshot safely the DB while connected before a migration, this will allow easy rollback
+- Improved status detail for declarative migrations, e.g. show diff between file and db object
+- Generate ALTER instead of DROP/CREATE
+- Generate SELECT-INTO for general alters
+- Warning if anyone else has edited the schema since migration has last ran.
+    - Store Schema/application version pragma
+    - could also do this via table schema comparison
+- leave "ensure table created" just for testing? or come up with better way to do it??
 
 ## Connection Management and Concurrency
 - one connection per thread, like RoR AR
 - Another options is to have two thread pools, one for reads and one for writes
   - This is more complex, but elimnates Busy errors
-  -
    https://kerkour.com/sqlite-for-servers
 - SQLite supports concurrent reads but locks on writes.
   - Can be configured to block instead of raising an error on write contention
     https://sqlite.org/c3ref/busy_timeout.html
-- Make sure to check for WAL mode for better concurrency
-  - https://www.sqlite.org/wal.html
 - https://kerkour.com/sqlite-for-servers
   - A 2024 guide to SQLite use and tuning on backend
   - `PRAGMA busy_timeout = 5000;` 5 seconds for app, 15 seconds for API
     - Allows waiting for a write lock to be released before raising an error
 
-## transaction management
-Offer a context manager for transactions, cursors, and committing
-
 ## Read about rich hickeys datomic
 https://docs.datomic.com/datomic-overview.html
 
-## Frozen Model
-- e.g. disable lazy loading of fields, etc
-  - to guarantee immutability after load, before passing to template etc.
-
 # One Day Maybe
+
+
 - Runtime checking of model fields, e.g. if a field is not in the table, raise an error
   - This could be useful for making models from adhoc queries. e.g. have it actually tell you what the model should look like.
-- Allow implicitly created NamedTuple models to be returned from queries, e.g pluck
-  - e.g. constructed based on query builder, etc.  could be usedful for adhoc queries to reduce boilerplate
-  - do implicit instead of this older idea: "Instead of using non-table models to reduce number of columns, just inject raising Lazy Stubs for deselected columns"
 - how to express more complex updates like this:
     `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
 - Auto detect or provide a way to santize/escape LIKE params. e.g.  of % or _
-- leverage tstring in python 3.14 to avoid AST hacking
-- Allow query builder to allow partial paths in f-strings
-  - e.g. `f"{RelatedModel.field}"` ipo full path of `f"{Model.related_model.field}"` in queries
-  - then we can let sqlite fail if abigous? (does it fail or just guess?
-  - Also we would need to guess the join and fail if it is ambiguous, or require the join to be specified
-- Strict mode to disallow certain lazy ops, require explict eager loads
-  https://guides.rubyonrails.org/active_record_querying.html#strict-loading
-- strict mode sanitize models before passing to template engines??
 - engine.exists (rails has relation.exists, e.g. Customer.where(first_name: "Ryan").exist
 - scalar accessors, e.g. RoR AR's pick. get one value from one row and one
   column (technically pick also allows multiple colums) don't see why not just use
   find/find_by then access the field
 - RoR annotate (and sql comments so that later we can use it during observabilites)
-- Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
-- mutable id object as id which can mutate when saved.
 - Consider dropping the injected Engine, and goto a fluent RoR AR style interface
   - e.g. `row.save()` ipo `engine.save(row)`
 - use return on updates to enable single statement updates with return value?
+- deeper nested type restoration on json fields, e.g. `stats: dict[str, set[int]]` (kinda hard to do fo arbitrary cases)
 
 
+## Frozen Model
+- e.g. disable lazy loading of fields, etc
+  - to guarantee immutability after load, before passing to template etc.
 
 
 ## GROUP BY / Aggregation
@@ -383,6 +311,57 @@ Both of these would generate the same SQL
 SELECT name, sum(score) as total_score
 FROM Person
 WHERE name = 'Apple'
+```
+
+## engine.upsert
+| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
+
+infered constraits from DB
+- https://sqlite.org/syntax/column-def.html
+- https://sqlite.org/syntax/column-constraint.html
+- We can just use migrations to add constraints and make db the source of truth.
+- We don't actually even need to read them in except to add validation on upserts (ie, only allow upserting on sets of unique columns)
+
+
+```sql
+create table XXX (
+    id integer primary key,
+    name text,
+    place text,
+    value int
+);
+-- the obligate unique constraint
+CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
+
+-- make upsert on name,place combo
+insert into XXX (name, place, value) values ('a', 'b', 777)
+on conflict(name, place) do update set value = excluded.value;
+-- or even just allow it to happen on any conflict (just set all non-id fields)
+-- This gets a little tricky with existing data, but if we follow api of insert
+--   and up, this makes sense, all fields are persisted (in either case insert or
+--   update)
+insert into XXX (name, place, value) values ('a', 'b', 888)
+on conflict
+    do update
+        set name = excluded.name, place = excluded.place, value = excluded.value;
+```
+
+This is the user code
+```python
+class XXX(NamedTuple):
+    id: int | None
+    name: str
+    place: str
+    value: int
+
+    _meta = Meta(
+        unique_contraints=[('name','place')]
+    )
+
+engine.ensure_table_created(XXX)
+engine.upsert(XXX(name='a', place='b', value=777))
+engine.upsert(XXX(name='a', place='c', value=888))
+
 ```
 
 ## Multi Table Alt Model SELECT, e.g. ror's pluck
@@ -496,6 +475,50 @@ engine.query(*Character_TotalPower.total_power)
 SELECT id, name, sum(stats -> '$.power') as total_power
 FROM Character
 GROUP BY name
+```
+
+## Cython implementation for faster field descriptor access for lazy loading, etc
+Cython implementation of FieldDescriptor for better performance
+`field_descriptor.pyx`
+``` python
+from typing import NamedTuple
+
+cdef class Column:
+    """Fast Column class using Cython"""
+    cdef public str name
+    cdef public object coltype
+
+    def __init__(self, str name, object coltype):
+        self.name = name
+        self.coltype = coltype
+
+    def __repr__(self):
+        return f"Column(name={self.name!r}, coltype={self.coltype!r})"
+
+    def __eq__(self, other):
+        if not isinstance(other, Column):
+            return False
+        return self.name == other.name and self.coltype == other.coltype
+
+
+cdef class CythonFieldDescriptor:
+    """High-performance field descriptor using Cython"""
+    cdef public Column column
+    cdef public int index
+
+    def __init__(self, Column column, int index):
+        self.column = column
+        self.index = index
+
+    def __get__(self, object instance, object owner):
+        # Fast path: if instance is None, return Column
+        if instance is None:
+            return self.column
+        # Fast path: direct tuple indexing for instances
+        return instance[self.index]
+
+    def __repr__(self):
+        return f"CythonFieldDescriptor(column={self.column}, index={self.index})"
 ```
 
 
