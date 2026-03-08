@@ -135,13 +135,15 @@ Note: `engine.find_by()` returns `None` instead of raising, giving you the choic
 |   |                                        |                                                                     |                                                                  |
 |   | **Read**                               |                                                                     |                                                                  |
 |   | Find one by Id                         | `engine.find(Post, 1)`                                              | `Post.find(1)`                                                   |
-|   | Find one by field                      | `engine.find_by(Post, name="Hi")`                                   | `Model.find_by(name: "Hi")`                                      |
-|   | Find one or Create                     | Not planned                                                         | `Post.find_or_create_by(a: 1, b: 2)`                             |
+|   | Find one by fields                     | `engine.find_by(Post, name="Hi")`                                   | `Model.find_by(name: "Hi")`                                      |
+|   | Find one (raw SQL)                     | `engine.find_by(Post, sql, params)`                                 | `Post.find_by_sql(sql).take/first`                               |
+| * | Find one or Create                     | ?                                                                   | `Post.find_or_create_by(a: 1, b: 2)`                             |
 |   | _many_                                 |                                                                     |                                                                  |
-|   | Find many                              | `@select(Post): f"WHERE {Post.name} = 'Hi'"`                        | `Post.where(name: "Hi")`                                         |
-|   | Query builder                          | `@select(Model)` decorator                                          | `Model.where(...).order(...)`                                    |
+|   | Select all                             | `engine.select(Post)`                                               | `Post.all`                                                       |
+|   | Select by field(s)                     | `engine.select(Post, name="Hi")`                                    | `Post.where(name: "Hi").all`                                     |
+|   | Select query builder                   | `@select(Post)...f"WHERE...ORDER BY..."`                            | `Post.where(...).order(...)`                                     |
 |   | Raw SQL                                | `engine.query(Model, sql)`                                          | `Model.find_by_sql(sql)`                                         |
-|   | Aggregations                           | raw SQL with `Row` models, encourage using view migrations          | `Model.group(...).sum(...)`                                      |
+|   | Aggregations                           | raw SQL/View with `Row` models (views+migrate works well)           | `Model.group(...).sum(...)`                                      |
 |   | **Write**                              |                                                                     |                                                                  |
 |   | Save (Insert or Update)                | `post = engine.save(post)`                                          | `post.save`                                                      |
 |   | Save (one-liner)                       | `post = engine.save(Post(None, "Hi", dt.now()))`                    | `Post.create(name: "Hi")`                                        |

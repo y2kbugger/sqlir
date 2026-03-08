@@ -2,6 +2,9 @@
 - find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
 - allow list[str] as field type, inner types are just for static analysis, but it is always stored as json
 - add db table dump to migrations
+- integrate fetchall into e.select, so you can do `engine.select(Model)` instead of `engine.query(*select(Model)).fetchall()`
+- make save only do inserts. rename insert?
+- consider collapse find and find_by into one method, e.g. `engine.find(Model, id)` and `engine.find(Model, name="Bart")` , but then we stray from AR
 
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
