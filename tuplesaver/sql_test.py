@@ -1,8 +1,10 @@
 from textwrap import dedent
+from typing import assert_type
 
 import pytest
 
-from .sql import QueryError, TableRow, select
+from .model import Row
+from .sql import QueryError, SelectDual, TableRow, select
 
 
 class League(TableRow):
@@ -19,6 +21,11 @@ class Athlete(TableRow):
     team: Team
 
 
+class AthleteView(Row):
+    __tablename__ = "Athlete"
+    name: str
+
+
 def dd(sql: str) -> str:
     return dedent(sql).strip()
 
@@ -28,6 +35,18 @@ def test_select_on_table() -> None:
 
     assert q == dd("""
         SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
+        """)
+
+
+def test_select_on_view_model() -> None:
+    query = select(AthleteView)
+
+    assert_type(query, SelectDual[AthleteView])
+
+    M, q = query
+    assert M is AthleteView
+    assert q == dd("""
+        SELECT Athlete.name FROM Athlete
         """)
 
 

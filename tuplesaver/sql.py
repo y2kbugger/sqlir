@@ -8,14 +8,14 @@ from textwrap import dedent
 from typing import Any
 
 # NOTE: sql.py should only know about .model, but not .engine or .query
-from .model import TableRow
+from .model import Row, TableRow
 
 
 class QueryError(Exception):
     pass
 
 
-class SelectDual[R: TableRow](tuple[type[R], str]):
+class SelectDual[R: Row | TableRow](tuple[type[R], str]):
     def __new__(cls, Model: type[R]) -> SelectDual[R]:
         # Create a tuple (Model, select_sql)
         select_sql = generate_select_sql(Model)
@@ -33,11 +33,11 @@ class SelectDual[R: TableRow](tuple[type[R], str]):
         return wrapper
 
 
-def select[R: TableRow](Model: type[R]) -> SelectDual[R]:
+def select[R: Row | TableRow](Model: type[R]) -> SelectDual[R]:
     return SelectDual.__new__(SelectDual, Model)
 
 
-def render_query_def_func(Model: type[TableRow], func: Callable) -> str:
+def render_query_def_func(Model: type[Row | TableRow], func: Callable) -> str:
     source = inspect.getsource(func)
     source = dedent(source)
     tree = ast.parse(source)
@@ -150,14 +150,14 @@ def generate_create_table_ddl(Model: type[TableRow]) -> str:
 
 
 @cache
-def generate_select_sql(Model: type[TableRow]) -> str:
+def generate_select_sql[R: Row | TableRow](Model: type[R]) -> str:
     meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model"
     return f"SELECT {', '.join(meta.table_name + '.' + f.name for f in meta.fields)} FROM {meta.table_name}"
 
 
 @lru_cache(maxsize=256)
-def generate_select_by_field_sql(Model: type[TableRow], field_names: frozenset[str]) -> str:
+def generate_select_by_field_sql[R: Row | TableRow](Model: type[R], field_names: frozenset[str]) -> str:
     select = generate_select_sql(Model)
     where_clause = " AND ".join(f"{field} = :{field}" for field in sorted(field_names))
     return dedent(f"""
