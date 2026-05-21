@@ -25,6 +25,8 @@
 
 ## Engine API congruence and ergonomics
 __how to make query.select more integrated to Engine so its more like find__
+SEE API2.md for more thoughts on this
+
 - Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
     - how often do we need to control fetchall vs fetchmany.
     - what about leveraging get?
@@ -42,8 +44,10 @@ __how to make query.select more integrated to Engine so its more like find__
 - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, t"{MyModel.name} = 'Bart'")`??
 
 # Bugs
+- params on select style queries should be type converted.
 - Switch to semi joins in sql query generator auto-joiner
     - otherwise, fanout happen. Add regression test for this.
+- if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
 
 
 # Testing
@@ -100,12 +104,15 @@ __how to make query.select more integrated to Engine so its more like find__
 
 
 # Next
+- interactive restore list too long. can you page restores or head results?
+- Ship example.ipynb or output with library
+- ai skill for library usage
 - Find a remove unused exceptions
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
-
+- support sql column defs with default values, e.g. `name: str = "default name"` and then have that be the default value for the column in the create table statement, and also have it be the default value for the field when creating a new instance of the model without specifying that field.
 
 ## Backpop
 - Also considder one to one relationships that backpop to a single instance rather than a list
