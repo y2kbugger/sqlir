@@ -2,11 +2,11 @@
 Tuple Saver persists and retrieves python `NamedTuple`s to SQLite3.
 
 ## Quick Start
-Add the library to your poetry project:
+Add the library with uv:
 
-    poetry add git+https://github.com/y2kbugger/tuplesaver.git
+  uv add git+https://github.com/y2kbugger/tuplesaver.git
 
-or if you use something else to manage you `.venv` use that or pip instead.
+or if you manage your environment another way, use pip:
 
     pip install git+https://github.com/y2kbugger/tuplesaver.git
 
@@ -49,17 +49,17 @@ This is viable for many web apps, including a large fraction internal enterprise
 - no dependencies
 
 # Development
-Use poetry to install the dependencies:
+Use uv to install the development dependencies:
 
-    $ poetry install --with dev
+  $ uv sync --group dev
 
 Install pre-commit hooks:
 
-    $ pre-commit install --hook-type pre-commit --hook-type pre-push --hook-type post-commit
+  $ uv run pre-commit install --hook-type pre-commit --hook-type pre-push --hook-type post-commit
 
 then activate your terminal and run the tests via vscode or the cli:
 
-    $ pytest
+    $ uv run pytest
 
 There is a test Task setup in vscode. You maybe wish to add a keybinding to run it, e.g.
 
