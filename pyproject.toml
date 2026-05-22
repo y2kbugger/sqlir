@@ -18,7 +18,7 @@ tuplesaver-migrate = "tuplesaver.migrate_cli:main"
 dev = [
     "pytest",
     "ruff",
-    "ty>=0.0.12",
+    "ty",
     "pre-commit",
     "pytest-benchmark>=5.1.0,<6",
 ]

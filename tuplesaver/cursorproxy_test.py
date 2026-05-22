@@ -29,16 +29,19 @@ def proxy(engine: Engine) -> TypedCursorProxy[M]:
 
 
 def test_proxy_typehints(proxy: TypedCursorProxy[M]) -> None:
-    assert_type(proxy, TypedCursorProxy[M])
-    assert_type(proxy.connection, apsw.Connection)
+    from typing import TYPE_CHECKING
 
-    assert_type(proxy.fetchone(), M | None)
-    assert_type(proxy.fetchall(), list[M])
-    assert_type(proxy.connection.changes(), int)
-    assert_type(proxy.sql, str)
-    assert_type(proxy.is_explain, int)
-    assert_type(proxy.has_vdbe, bool)
-    assert_type(proxy.expanded_sql, str)
+    if TYPE_CHECKING:
+        assert_type(proxy, TypedCursorProxy[M])
+        assert_type(proxy.connection, apsw.Connection)
+
+        assert_type(proxy.fetchone(), M | None)
+        assert_type(proxy.fetchall(), list[M])
+        assert_type(proxy.sql, str)
+        assert_type(proxy.connection.changes(), int)
+        assert_type(proxy.is_explain, int)
+        assert_type(proxy.has_vdbe, bool)
+        assert_type(proxy.expanded_sql, str)
 
 
 def test_proxy_fetchone(proxy: TypedCursorProxy[M]) -> None:
