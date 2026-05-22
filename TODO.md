@@ -1,6 +1,6 @@
 # WIP
 - find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
-- allow list[str] as field type, inner types are just for static analysis, but it is always stored as json
+- allow list[str] as field type, inner types are just for static analysis, but it is always stored as json. Also allow dataclass and dict as top-level as well as inner types, e.g. `list[dict[str, int]]` or `list[MyDataClass]` or `MyDataClass` or `dict[str, int]`
 
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
@@ -66,6 +66,7 @@
 - benchmark model creation, field access, hashing, and memory footprint vs plain unpatched NamedTuple, and dataclass,
 - Test that you may not reregister an adapt-convert pair
 - Ensure test exists for model with unregistered field type, and that it raises UnregisteredFieldTypeError
+- ensure that ID fields are always stored as integer affinity. i really think there are some landmines with tables having "text" in the the name. maybe all id columns should just be INT now that we do adapt/convert without relying on sql column types.
 
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
@@ -179,7 +180,8 @@
 
 # Later
 ## leverage tstring for query-ten avoid AST hacking
-## JSONB format
+## JSONB format - probably a breaking change.....
+## check for valid json on json fields
 
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
 Atomic table replacement that minimizes write-lock duration. Only the rename step holds the lock; all data loading and index building happen outside the critical section.
@@ -238,8 +240,7 @@ Off by default, but can be enabled with
 https://docs.datomic.com/datomic-overview.html
 
 # One Day Maybe
-
-
+- use msgpack or mashumaro or something for faster json serde
 - Runtime checking of model fields, e.g. if a field is not in the table, raise an error
   - This could be useful for making models from adhoc queries. e.g. have it actually tell you what the model should look like.
 - how to express more complex updates like this:
