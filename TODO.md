@@ -1,5 +1,4 @@
 # WIP
-- unfactor AdapterConvertRegistry into module level. This allows a global model converter cache. there are no longer per-engine differences so we don't need to instaciate a wrapped object. Also the row cursor would no longer need pointer to the instance of the AdapterConvertRegistry, it can just use the module level functions and cache.
 - find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
 
 ## TableRow Model

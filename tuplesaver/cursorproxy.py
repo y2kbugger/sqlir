@@ -81,7 +81,9 @@ class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
 
     @staticmethod
     def proxy_cursor_lazy(Model: type[R], cursor: apsw.Cursor, engine: Engine) -> TypedCursorProxy[R]:
-        convert = engine.adapt_convert_registry.get_model_converter(Model)
+        from .adaptconvert import get_model_converter
+
+        convert = get_model_converter(Model)
 
         def row_fac_lazy(c: apsw.Cursor, r: apsw.SQLiteValues) -> R:
             return _make_model_lazy(Model, c, convert(r), engine)

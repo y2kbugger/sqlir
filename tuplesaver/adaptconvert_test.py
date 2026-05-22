@@ -166,10 +166,9 @@ def test_datetime_string_literals_in_sql_match(engine: Engine) -> None:
     assert cur.fetchone()[0] == 1
 
     # adapted ? parameter produces the same BLOB — this works
-    from .adaptconvert import AdaptConvertRegistry
+    from .adaptconvert import adapt_value
 
-    registry = AdaptConvertRegistry()
-    adapted = registry.adapt_value(ts)
+    adapted = adapt_value(ts)
     cur.execute("SELECT COUNT(*) FROM T WHERE ts = ?", (adapted,))
     assert cur.fetchone()[0] == 1
 

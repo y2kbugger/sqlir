@@ -9,7 +9,7 @@ from typing import Any, overload
 
 import apsw
 
-from .adaptconvert import AdaptConvertRegistry
+from .adaptconvert import AdaptConvertCursor, adapt_value
 from .cursorproxy import TypedCursorProxy
 
 # NOTE: engine.py should only know about .model, but not .query
@@ -96,8 +96,7 @@ class Engine:
             self.db_path = db_path
             self.connection: apsw.Connection = apsw.Connection(str(db_path))
 
-        self.adapt_convert_registry = AdaptConvertRegistry()
-        self.connection.cursor_factory = self.adapt_convert_registry
+        self.connection.cursor_factory = AdaptConvertCursor
 
     def ensure_table_created(self, Model: type[TableRow]) -> None:
         assert is_row_model(Model), f"Model `{Model.__name__}` is not a valid table model."
@@ -185,9 +184,9 @@ class Engine:
 
     def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         if isinstance(parameters, dict):
-            parameters = {k: self.adapt_convert_registry.adapt_value(v) if v is not None else None for k, v in parameters.items()}
+            parameters = {k: adapt_value(v) if v is not None else None for k, v in parameters.items()}
         elif parameters:
-            parameters = tuple(self.adapt_convert_registry.adapt_value(v) if v is not None else None for v in parameters)
+            parameters = tuple(adapt_value(v) if v is not None else None for v in parameters)
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
