@@ -1,113 +1,13 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import fields
+import enum
+from dataclasses import dataclass
 
 import pytest
 
-from .adaptconvert import InvalidAdaptConvertType
 from .engine import Engine
 from .model import TableRow
-
-
-def test_registering_adapt_convert_pair(engine: Engine) -> None:
-    class NewType:
-        def __init__(self, values: list[str]) -> None:
-            self.values = values
-
-    class ModelUnknownType(TableRow):
-        name: str
-        custom: NewType
-
-    def adapt_newtype(value: NewType) -> bytes:
-        return ",".join(value.values).encode()
-
-    def convert_newtype(value: bytes) -> NewType:
-        return NewType(value.decode().split(","))
-
-    engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype, convert_newtype)
-
-    ### Table Creation
-    engine.ensure_table_created(ModelUnknownType)
-
-    cursor = engine.connection.cursor()
-    cursor.execute(f"PRAGMA table_info({ModelUnknownType.__name__});")
-    columns = cursor.fetchall()
-    assert len(columns) == len(fields(ModelUnknownType))
-    assert columns[2][1] == "custom"  # Column Name
-    assert columns[2][2] == "tuplesaver.adaptconvert_test.test_registering_adapt_convert_pair.<locals>.NewType"  # Column Type
-    assert columns[2][3] == 1  # Not Null
-    assert columns[2][5] == 0  # Not Primary Key
-
-    ### Adapt
-    row = ModelUnknownType("Alice", NewType(["a", "b", "c"]))
-    row = engine.save(row)
-
-    cursor.execute(f"SELECT substr(custom,0) FROM {ModelUnknownType.__name__};")  # substr converting to NewType with converter
-    rows = cursor.fetchall()
-    assert len(rows) == 1
-    assert rows[0][0] == b'a,b,c'  # adapted to a binary format
-
-    ### Convert
-    retrieved_row = engine.find(ModelUnknownType, row.id)
-    assert type(retrieved_row.custom) is NewType
-    assert retrieved_row.custom.values == ["a", "b", "c"]
-
-
-def test_attempted_registration_of_concrete_obj_raises(engine: Engine) -> None:
-    class NewType: ...
-
-    def adapt_newtype(value: NewType) -> bytes:
-        return b''
-
-    def convert_newtype(value: bytes) -> NewType:
-        return NewType()
-
-    with pytest.raises(InvalidAdaptConvertType):
-        engine.adapt_convert_registry.register_adapt_convert("Blah", adapt_newtype, convert_newtype)  # type: ignore
-
-
-def test_attempted_registration_of_an_union_raises(engine: Engine) -> None:
-    class NewType: ...
-
-    def adapt_newtype(value: NewType) -> bytes:
-        return b''
-
-    def convert_newtype(value: bytes) -> NewType:
-        return NewType()
-
-    with pytest.raises(InvalidAdaptConvertType):
-        engine.adapt_convert_registry.register_adapt_convert(NewType | None, adapt_newtype, convert_newtype)  # type: ignore
-
-
-def test_attempted_registration_of_already_registered_type(engine: Engine) -> None:
-    class NewType: ...
-
-    def adapt_newtype(value: NewType) -> bytes:
-        return b''
-
-    def convert_newtype(value: bytes) -> NewType:
-        return NewType()
-
-    def adapt_newtype2(value: NewType) -> bytes:
-        return b''
-
-    def convert_newtype2(value: bytes) -> NewType:
-        return NewType()
-
-    engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype, convert_newtype)
-
-    adapters = engine.adapt_convert_registry._adapters  # noqa: SLF001
-    converters = engine.adapt_convert_registry._converters  # noqa: SLF001
-
-    # verify the registration
-    assert adapters[NewType] is adapt_newtype
-    assert converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype
-
-    engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype2, convert_newtype2)
-    # verify that the registration was overwritten
-    assert adapters[NewType] is adapt_newtype2
-    assert converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype2
 
 
 def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
@@ -154,12 +54,41 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
     assert returned_row.flag is False
 
 
+def test_can_store_and_retrieve_enum_as_json(engine: Engine) -> None:
+    class Status(str, enum.Enum):
+        ACTIVE = "active"
+        DISABLED = "disabled"
+
+    class T(TableRow):
+        status: Status
+
+    engine.ensure_table_created(T)
+    row = engine.save(T(Status.ACTIVE))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.status is Status.ACTIVE
+
+
 def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
     class T(TableRow):
         names: list
 
     engine.ensure_table_created(T)
     names = ["Alice", "Bob", "Charlie", 2]
+    row = engine.save(T(names))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.names == names
+
+
+def test_can_store_and_retrieve_typed_list_as_json(engine: Engine) -> None:
+    class T(TableRow):
+        names: list[str]
+
+    engine.ensure_table_created(T)
+    names = ["Alice", "Bob", "Charlie"]
     row = engine.save(T(names))
 
     returned_row = engine.find(T, row.id)
@@ -180,32 +109,93 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
     assert returned_row.names == names
 
 
-def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
+def test_can_store_and_retrieve_typed_dict_as_json(engine: Engine) -> None:
+    class T(TableRow):
+        counts: dict[str, int]
+
+    engine.ensure_table_created(T)
+    counts = {"Alice": 1, "Bob": 2, "Charlie": 3}
+    row = engine.save(T(counts))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.counts == counts
+
+
+def test_can_store_and_retrieve_nested_typed_json_as_json(engine: Engine) -> None:
+    class T(TableRow):
+        payload: list[dict[str, int]]
+
+    engine.ensure_table_created(T)
+    payload = [{"a": 1}, {"b": 2, "c": 3}]
+    row = engine.save(T(payload))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.payload == payload
+
+
+@dataclass
+class JsonDataClass:
+    name: str
+    score: int
+
+
+def test_can_store_and_retrieve_dataclass_as_json(engine: Engine) -> None:
+    class T(TableRow):
+        payload: JsonDataClass
+
+    engine.ensure_table_created(T)
+    payload = JsonDataClass(name="Alice", score=42)
+    row = engine.save(T(payload))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.payload == payload
+
+
+def test_can_store_and_retrieve_list_of_dataclass_as_json(engine: Engine) -> None:
+    class T(TableRow):
+        payload: list[JsonDataClass]
+
+    engine.ensure_table_created(T)
+    payload = [
+        JsonDataClass(name="Alice", score=42),
+        JsonDataClass(name="Bob", score=7),
+    ]
+    row = engine.save(T(payload))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.payload == payload
+
+
+def test_can_store_and_retrieve_nested_dataclass_json_as_json(engine: Engine) -> None:
+    class T(TableRow):
+        payload: dict[str, list[JsonDataClass]]
+
+    engine.ensure_table_created(T)
+    payload = {
+        "alpha": [JsonDataClass(name="Alice", score=42)],
+        "beta": [JsonDataClass(name="Bob", score=7), JsonDataClass(name="Charlie", score=3)],
+    }
+    row = engine.save(T(payload))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.payload == payload
+
+
+def test_raises_on_json_when_not_msgspec_encodeable(engine: Engine) -> None:
     class T(TableRow):
         dates: list
 
     engine.ensure_table_created(T)
 
-    with pytest.raises(TypeError, match="Object of type datetime is not JSON serializable"):
-        engine.save(T([dt.datetime.now()]))
+    class Unserializable:
+        pass
 
+    unserializable_object = Unserializable()
 
-class PickleableTestType:
-    __slots__ = ("value",)
-
-    def __init__(self, value: int):
-        self.value = value
-
-
-def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
-    class T(TableRow):
-        data: PickleableTestType
-
-    engine.adapt_convert_registry.register_pickleable_adapt_convert(PickleableTestType)
-    engine.ensure_table_created(T)
-
-    sentinel_instance = PickleableTestType(42)
-    row = engine.save(T(sentinel_instance))
-    returned_row = engine.find(T, row.id)
-
-    assert returned_row.data.value == sentinel_instance.value
+    with pytest.raises(TypeError, match="Encoding objects of type Unserializable is unsupported"):
+        engine.save(T([unserializable_object]))

@@ -66,6 +66,12 @@ def test_unwrap_optional_type() -> None:
     assert _unwrap_optional_type(Union[OUT, None]) == (True, (int))  # noqa: UP007
     assert _unwrap_optional_type(Optional[OUT]) == (True, (int))  # noqa: UP045
 
+    # JSON_TEXT fields can be optional also
+    assert _unwrap_optional_type(Optional[list]) == (True, list)  # noqa: UP045
+    assert _unwrap_optional_type(Optional[dict]) == (True, dict)  # noqa: UP045
+    assert _unwrap_optional_type(Optional[list[str]]) == (True, list[str])  # noqa: UP045
+    assert _unwrap_optional_type(Optional[dict[str, int]]) == (True, dict[str, int])  # noqa: UP045
+
 
 def test_is_row_model() -> None:
     assert is_row_model(int) is False
@@ -113,12 +119,13 @@ def test_sqltypename() -> None:
     assert schematype(str) == "TEXT"
     assert schematype(float) == "REAL"
     assert schematype(bytes) == "BLOB"
-    assert schematype(bool) == "builtins.bool"
-    assert schematype(list) == "builtins.list"
-    assert schematype(dict) == "builtins.dict"
-    # this also tests that inheritance hierarchy doesn't disrupt column type resolution
-    assert schematype(dt.date) == "datetime.date"
-    assert schematype(dt.datetime) == "datetime.datetime"
+    assert schematype(bool) == "BOOL_INT"
+    assert schematype(dt.date) == "JSON_TEXT"
+    assert schematype(dt.datetime) == "JSON_TEXT"
+
+    class UnregisteredType: ...
+
+    assert schematype(UnregisteredType) == "JSON_TEXT"
 
     # Test related models as fields
     class ModelA(TableRow):
@@ -249,4 +256,66 @@ def test_table_meta__unregistered_field_type__doesnt_raise() -> None:
         name: str
         unknown: NewType
 
-    _ = ModelUnknownType.meta
+    meta = ModelUnknownType.meta
+    assert meta.fields[2].sql_typename == "JSON_TEXT"
+
+
+def test_meta__json_style_fields__preserve_full_type_and_use_jsontext_storage() -> None:
+    from dataclasses import dataclass
+
+    @dataclass
+    class JsonData:
+        name: str
+        value: int
+
+    class TypedJsonModel(TableRow):
+        created_on: dt.date
+        created_at: dt.datetime
+        names: list[str]
+        counts: dict[str, int]
+        payload: list[dict[str, int]]
+        payload_item: JsonData
+        payload_dataclasses: list[JsonData]
+
+    meta = TypedJsonModel.meta
+    by_name = {field.name: field for field in meta.fields}
+
+    assert schematype(list) == "JSON_TEXT"
+    assert schematype(dict) == "JSON_TEXT"
+    assert schematype(dt.date) == "JSON_TEXT"
+    assert schematype(dt.datetime) == "JSON_TEXT"
+
+    assert by_name["created_on"].full_type == dt.date
+    assert by_name["created_on"].type is dt.date
+    assert by_name["created_on"].sql_typename == "JSON_TEXT"
+    assert by_name["created_on"].sql_columndef == "created_on [JSON_TEXT] NOT NULL"
+
+    assert by_name["created_at"].full_type == dt.datetime
+    assert by_name["created_at"].type is dt.datetime
+    assert by_name["created_at"].sql_typename == "JSON_TEXT"
+    assert by_name["created_at"].sql_columndef == "created_at [JSON_TEXT] NOT NULL"
+
+    assert by_name["names"].full_type == list[str]
+    assert by_name["names"].type == list[str]
+    assert by_name["names"].sql_typename == "JSON_TEXT"
+    assert by_name["names"].sql_columndef == "names [JSON_TEXT] NOT NULL"
+
+    assert by_name["counts"].full_type == dict[str, int]
+    assert by_name["counts"].type == dict[str, int]
+    assert by_name["counts"].sql_typename == "JSON_TEXT"
+    assert by_name["counts"].sql_columndef == "counts [JSON_TEXT] NOT NULL"
+
+    assert by_name["payload"].full_type == list[dict[str, int]]
+    assert by_name["payload"].type == list[dict[str, int]]
+    assert by_name["payload"].sql_typename == "JSON_TEXT"
+    assert by_name["payload"].sql_columndef == "payload [JSON_TEXT] NOT NULL"
+
+    assert by_name["payload_item"].full_type == JsonData
+    assert by_name["payload_item"].type == JsonData
+    assert by_name["payload_item"].sql_typename == "JSON_TEXT"
+    assert by_name["payload_item"].sql_columndef == "payload_item [JSON_TEXT] NOT NULL"
+
+    assert by_name["payload_dataclasses"].full_type == list[JsonData]
+    assert by_name["payload_dataclasses"].type == list[JsonData]
+    assert by_name["payload_dataclasses"].sql_typename == "JSON_TEXT"
+    assert by_name["payload_dataclasses"].sql_columndef == "payload_dataclasses [JSON_TEXT] NOT NULL"

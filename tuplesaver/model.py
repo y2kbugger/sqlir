@@ -152,11 +152,13 @@ def make_model_meta(Model: type[TableRow]) -> Meta:
 def schematype(FieldType: type) -> str:
     if FieldType in native_columntypes:
         return native_columntypes[FieldType]
+    elif FieldType is bool:
+        return "BOOL_INT"
     elif is_row_model(FieldType):
         # a yet unregistered foreign key
         return f"{FieldType.__name__}_ID"
     else:
-        return f"{FieldType.__module__}.{FieldType.__qualname__}"
+        return "JSON_TEXT"
 
 
 def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:

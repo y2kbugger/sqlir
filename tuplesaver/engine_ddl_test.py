@@ -83,8 +83,8 @@ def test_ensure_table_created(engine: Engine) -> None:
     assert cols[2] == TableInfo(2, "score", "REAL", 1, None, 0)
     assert cols[3] == TableInfo(3, "age", "INTEGER", 1, None, 0)
     assert cols[4] == TableInfo(4, "data", "BLOB", 1, None, 0)
-    assert cols[5] == TableInfo(5, "startdate", "datetime.date", 1, None, 0)
-    assert cols[6] == TableInfo(6, "modified", "datetime.datetime", 1, None, 0)
+    assert cols[5] == TableInfo(5, "startdate", "JSON_TEXT", 1, None, 0)
+    assert cols[6] == TableInfo(6, "modified", "JSON_TEXT", 1, None, 0)
     assert cols[7] == TableInfo(7, "serial", "INTEGER", 0, None, 0)  # optional field
 
 

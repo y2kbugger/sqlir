@@ -134,8 +134,6 @@ class Engine:
         except Exception as e:
             raise e
 
-        self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row.id, convert=lambda _id: _id)
-
     ##### Reading
     def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R:
         """Find a row by its id. This is a special case of find_by."""
@@ -186,6 +184,10 @@ class Engine:
         return self.query(Model, sql, kwargs)
 
     def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
+        if isinstance(parameters, dict):
+            parameters = {k: self.adapt_convert_registry.adapt_value(v) if v is not None else None for k, v in parameters.items()}
+        elif parameters:
+            parameters = tuple(self.adapt_convert_registry.adapt_value(v) if v is not None else None for v in parameters)
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 

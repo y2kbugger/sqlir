@@ -1,4 +1,5 @@
 # WIP
+- unfactor AdapterConvertRegistry into module level. This allows a global model converter cache. there are no longer per-engine differences so we don't need to instaciate a wrapped object. Also the row cursor would no longer need pointer to the instance of the AdapterConvertRegistry, it can just use the module level functions and cache.
 - find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
 - allow list[str] as field type, inner types are just for static analysis, but it is always stored as json. Also allow dataclass and dict as top-level as well as inner types, e.g. `list[dict[str, int]]` or `list[MyDataClass]` or `MyDataClass` or `dict[str, int]`
 
@@ -10,18 +11,15 @@
 - move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 - backfill __tablename__ when it is missing, e.g. just use the class name, test this
-- make adapt/convert registration global, store cached converter on the model. (makes engine creation lighter)
 
 ## APSW Integration
-- Document how any type that implements buffer is auto adapted and you only need to add converter for it (might be annonying if trying to just pickle a numpy array)
-- combine rowtrace for type converting types and lazy maker all together
-    pragma user_version and pragma application_id for versioning and migrations
-    https://rogerbinns.github.io/apsw/tips.html#query-patterns
-    and maybe don't make it use rowtrace??
+- combine rowtrace for type converting types and lazy maker all together and maybe don't make it use rowtrace??
+- pragma user_version and pragma application_id for versioning and migrations
+- https://rogerbinns.github.io/apsw/tips.html#query-patterns
 
 
 # Bugs
-- params on select style queries should be type converted.
+- BE CERTAIN that sqlite range comparisons are going to work for how we store dates.
 - Switch to semi joins in sql query generator auto-joiner
     - otherwise, fanout happen. Add regression test for this.
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
@@ -42,7 +40,6 @@
     class SubModel(BaseModel):  # should raise
         boogie: int
     ```
-- test that adapt convert can't be added after Models start being registered.
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
 - test is_registered_fieldtype
@@ -64,9 +61,8 @@
 - Test duplicate joins in query.select deduplicates
 - Benchmark and test connection creation and closing
 - benchmark model creation, field access, hashing, and memory footprint vs plain unpatched NamedTuple, and dataclass,
-- Test that you may not reregister an adapt-convert pair
-- Ensure test exists for model with unregistered field type, and that it raises UnregisteredFieldTypeError
 - ensure that ID fields are always stored as integer affinity. i really think there are some landmines with tables having "text" in the the name. maybe all id columns should just be INT now that we do adapt/convert without relying on sql column types.
+- Can a modeul use dataclass feature like "field"? should we make a custom one?
 
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
@@ -86,10 +82,9 @@
 - Ship example.ipynb or output with library
 - ai skill for library usage
 - Find a remove unused exceptions
-- More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
+- Document which types msgspec handles (Enum, UUID, datetime, date, time, set, frozenset, list, dict, NamedTuple) vs. which it cannot (Path, Decimal, complex C-extension types)
   - tests?, examples?
-- I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
-  - tests?, examples?
+- types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - support sql column defs with default values, e.g. `name: str = "default name"` and then have that be the default value for the column in the create table statement, and also have it be the default value for the field when creating a new instance of the model without specifying that field.
 
 ## Backpop
@@ -182,7 +177,8 @@
 ## leverage tstring for query-ten avoid AST hacking
 ## JSONB format - probably a breaking change.....
 ## check for valid json on json fields
-
+## auto pickling type
+make a type annotation like `Pickle[MyType]` that would automatically pickle and unpickle the field, and raise if it fails to pickle or unpickle. This fills a gap left by the expunging of custom adapt/convert pairs.
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
 Atomic table replacement that minimizes write-lock duration. Only the rename step holds the lock; all data loading and index building happen outside the critical section.
 
@@ -240,7 +236,6 @@ Off by default, but can be enabled with
 https://docs.datomic.com/datomic-overview.html
 
 # One Day Maybe
-- use msgpack or mashumaro or something for faster json serde
 - Runtime checking of model fields, e.g. if a field is not in the table, raise an error
   - This could be useful for making models from adhoc queries. e.g. have it actually tell you what the model should look like.
 - how to express more complex updates like this:
@@ -583,3 +578,8 @@ cdef class CythonFieldDescriptor:
   - just use the query builder directly
   - Violates choose boilerplate over magic
   - better to use Model, sql, params as a stable and interoperable intermediate representation
+- `register_adapt_convert` / custom serialization registration API
+  - Removed in favor of msgspec as a universal automatic fallback
+  - msgspec handles all common types (bool, list, dict, Enum, UUID, datetime, date, time, set, frozenset, NamedTuple, dataclasses) with zero configuration
+  - Adding back a registration layer re-introduces adapter/converter bookkeeping that msgspec makes unnecessary
+  - For types msgspec can't handle, convert at the application layer before storing

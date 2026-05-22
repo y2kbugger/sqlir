@@ -19,63 +19,26 @@ These are the only built in type mappings
 | str    | TEXT    |
 | bytes  | BLOB    |
 
-We also include by default the following mappings
+We also handle the following types automatically:
 
-| Python   | SQLite            | Adapt/Convert      |
-|----------|-------------------|--------------------|
-| bool     | builtins.bool     | 1 -> x01, 0 -> x00 |
-| list     | builtins.list     | json dumps/loads   |
-| dict     | builtins.dict     | json dumps/loads   |
-| date     | datetime.date     | .isoformat()       |
-| datetime | datetime.datetime | .isoformat()       |
+| Python                                      | SQLite storage | Mechanism                                     |
+|:--------------------------------------------|:---------------|:----------------------------------------------|
+| bool                                        | INTEGER        | built-in special case (0/1)                   |
+| list                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| dict                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| date                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| datetime                                    | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| Enum                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| UUID                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| set                                         | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| time                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
+| buffer protocol (e.g. `numpy`, `bytearray`) | BLOB           | apsw auto-adapts via buffer protocol as bytes |
 
-Any other types will attempt to be pickled.
+Any other type that msgspec can serialize is stored as JSON. If msgspec cannot serialize the type, it raises at write time. Types msgspec cannot handle include `Path`, `Decimal`, and arbitrary C-extension objects.
 
-
-If you want to customize how you serialize, we use a thin wrapper on top of Adapt/Convert api.
-https://docs.python.org/3/library/sqlite3.html#sqlite3-adapter-converter-recipes
-
-    def adapt_date_iso(val):
-        """Adapt datetime.date to ISO 8601 date."""
-        return val.isoformat()
-
-    sqlite3.register_adapter(datetime.date, adapt_date_iso)
-
-
-    def convert_date(val):
-        """Convert ISO 8601 date to datetime.date object."""
-        return datetime.date.fromisoformat(val.decode())
-
-    sqlite3.register_converter("date", convert_date)
-
-So our api which wraps the above would look like this:
-
-    def adapt_datetime_iso(val: datetime.datetime) -> bytes:
-        """Adapt datetime.datetime to ISO 8601 date and time."""
-        return val.isoformat().encode()
-
-    def convert_datetime_iso(data: bytes) -> datetime.datetime:
-        """Convert ISO 8601 date and time to datetime.datetime object."""
-        return dt.datetime.fromisoformat(data.decode())
-
-    from tuplesaver import register_adapt_convert
-
-    register_adapt_convert(datetime.datetime, adapt_datetime_iso, convert_datetime_iso)
 
 ### A note on JSON columns
-Currently we do not apply adapters/converters to json dumps, because without specifying a schema there is no way to reliably recover type info.
-
-Even something as simple as date, would be ambiguous, because it could be a date or str going in
-
-    {"date": "2021-01-01"}
-
-If we enable dt.datetime serialization, then the above could have been
-
-    dict(date=dt.datetime(2021, 1, 1))
-
-or
-
-    dict(date="2021-01-01")
+Type annotations drive deserialization via `msgspec.json.decode(data, type=FieldType)`, so a field typed `list[dt.datetime]` will properly round-trip datetimes. However, for opaque generic containers (plain `dict`, `list` without inner type args), inner values are decoded as basic JSON types — a datetime stored inside a plain `dict` will come back as a string.
 
 ## sqlite3
 https://docs.python.org/3/library/sqlite3.html

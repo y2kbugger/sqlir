@@ -216,6 +216,26 @@ def test_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) 
     assert row == AdHoc(7.7)
 
 
+def test_query__datetime_param_is_adapted(engine: Engine) -> None:
+    import datetime as dt
+
+    class Event(TableRow):
+        name: str
+        happened_at: dt.datetime
+
+    engine.ensure_table_created(Event)
+    ts = dt.datetime(2024, 6, 15, 12, 0, 0)
+    engine.save(Event("launch", ts))
+    engine.save(Event("deploy", dt.datetime(2025, 1, 1, 9, 0, 0)))
+
+    cur = engine.query(Event, "SELECT * FROM Event WHERE happened_at = ?", (ts,))
+    row = cur.fetchone()
+
+    assert row is not None
+    assert row.name == "launch"
+    assert row.happened_at == ts
+
+
 def test_save__on_success__inserts_record_to_db(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     row = engine.save(Team("Lions", 30))

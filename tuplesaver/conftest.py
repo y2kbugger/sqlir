@@ -8,7 +8,6 @@ import apsw
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
-from .adaptconvert import included_adapt_convert_types
 from .engine import Engine
 
 
@@ -19,7 +18,6 @@ def pytest_configure(config: pytest.Config) -> None:
 @pytest.fixture
 def engine() -> Iterable[Engine]:
     engine = Engine(":memory:")
-    engine.adapt_convert_registry.register_included_adaptconverters(included_adapt_convert_types)
     yield engine
     engine.connection.close()
 
