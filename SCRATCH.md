@@ -23,18 +23,14 @@ We also handle the following types automatically:
 
 | Python                                      | SQLite storage | Mechanism                                     |
 |:--------------------------------------------|:---------------|:----------------------------------------------|
-| bool                                        | INTEGER        | built-in special case (0/1)                   |
-| list                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| dict                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| date                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| datetime                                    | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| Enum                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| UUID                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| set                                         | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| time                                        | BLOB (JSON)    | msgspec JSON encode/decode                    |
-| buffer protocol (e.g. `numpy`, `bytearray`) | BLOB           | apsw auto-adapts via buffer protocol as bytes |
+| `bool`                                           | INTEGER     | built-in special case (0/1)                   |
+| `datetime` / `date` / `time`                     | TEXT        | unquoted ISO-8601 string via `.isoformat()`   |
+| `Decimal`                                        | TEXT        | unquoted decimal string via `str()`           |
+| buffer protocol (e.g. `memoryview`, `bytearray`) | BLOB        | apsw auto-adapts via buffer protocol as bytes |
+| `dict`, `list`, `set`, `tuple`                   | TEXT (JSON) | msgspec JSON encode/decode fallback           |
+| `Enum`, `dataclass`, `UUID`                      | TEXT (JSON) | msgspec JSON encode/decode fallback           |
 
-Any other type that msgspec can serialize is stored as JSON. If msgspec cannot serialize the type, it raises at write time. Types msgspec cannot handle include `Path`, `Decimal`, and arbitrary C-extension objects.
+Any other type that msgspec can serialize is stored as JSON. If msgspec cannot serialize the type, it raises at write time.
 
 ### A note on datetime storage and SQLite date functions
 
