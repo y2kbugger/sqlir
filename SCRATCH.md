@@ -36,9 +36,16 @@ We also handle the following types automatically:
 
 Any other type that msgspec can serialize is stored as JSON. If msgspec cannot serialize the type, it raises at write time. Types msgspec cannot handle include `Path`, `Decimal`, and arbitrary C-extension objects.
 
+### A note on datetime storage and SQLite date functions
 
-### A note on JSON columns
-Type annotations drive deserialization via `msgspec.json.decode(data, type=FieldType)`, so a field typed `list[dt.datetime]` will properly round-trip datetimes. However, for opaque generic containers (plain `dict`, `list` without inner type args), inner values are decoded as basic JSON types — a datetime stored inside a plain `dict` will come back as a string.
+All non-native types (including `list`, `dict`, etc.) are stored as **JSON TEXT** (SQLite will report their `typeof()` as `text`). Datetimes (`datetime`, `date`, `time`) are stored as pure unquoted ISO8601 strings. Buffer protocols (`bytes`, `bytearray`, `memoryview`) are stored as raw SQLite `BLOB`.
+
+Because datetimes are stored as standard `TEXT`:
+- `ORDER BY ts`, `WHERE ts = ?`, `BETWEEN ? AND ?` all work correctly — ISO strings sort lexically
+- SQLite's date functions (`datetime()`, `strftime()`, `julianday()`, etc.) **work natively** on these columns (e.g. `SELECT strftime('%Y', ts)` returns the year)
+- Raw string literals in SQL (`WHERE ts = '2024-06-15T12:00:00'`) **match correctly** without requiring parameter adaptation.
+
+Note: When mixing naive and timezone-aware datetimes, sorting behavior follows ASCII string rules ('+' sorts before '.', meaning aware offsets can sort before microseconds). Always store datetimes in a consistent timezone/format for chronological sorting.
 
 ## sqlite3
 https://docs.python.org/3/library/sqlite3.html

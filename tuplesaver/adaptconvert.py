@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Any
 
 import apsw
@@ -31,12 +33,21 @@ class AdaptConvertRegistry:
         if typ is bool:
             return int(value)
 
+        if isinstance(value, (dt.datetime, dt.date, dt.time)):
+            return value.isoformat()
+
+        if isinstance(value, (bytearray, memoryview)):
+            return value
+
+        if isinstance(value, Decimal):
+            return str(value)
+
         # Fallback for Row models - extract id for FK storage
         if is_row_model(typ):
             return value.id
 
-        # Fallback to msgspec
-        return msgspec.json.encode(value)
+        # Fallback to msgspec, decode to TEXT for SQLite JSON functions
+        return msgspec.json.encode(value).decode('utf-8')
 
     def make_converter_for_model(self, Model: RowMeta) -> Callable[[apsw.SQLiteValues], tuple]:
         """Build and cache an optimized row-converter for *Model*.
@@ -48,7 +59,7 @@ class AdaptConvertRegistry:
         """
 
         # -- build converter via exec -------------------------------------------
-        ns: dict[str, Any] = {"msgspec": msgspec}
+        ns: dict[str, Any] = {"msgspec": msgspec, "_dt": dt.datetime, "_date": dt.date, "_time": dt.time, "_Decimal": Decimal}
         parts: list[str] = []
 
         for i, field in enumerate(Model.meta.fields):
@@ -58,6 +69,24 @@ class AdaptConvertRegistry:
 
             elif field.type is bool:
                 parts.append(f'bool(r[{i}]) if r[{i}] is not None else None')
+
+            elif field.type is dt.datetime:
+                parts.append(f'_dt.fromisoformat(r[{i}]) if r[{i}] is not None else None')
+
+            elif field.type is dt.date:
+                parts.append(f'_date.fromisoformat(r[{i}]) if r[{i}] is not None else None')
+
+            elif field.type is dt.time:
+                parts.append(f'_time.fromisoformat(r[{i}]) if r[{i}] is not None else None')
+
+            elif field.type is bytearray:
+                parts.append(f'bytearray(r[{i}]) if r[{i}] is not None else None')
+
+            elif field.type is memoryview:
+                parts.append(f'memoryview(r[{i}]) if r[{i}] is not None else None')
+
+            elif field.type is Decimal:
+                parts.append(f'_Decimal(r[{i}]) if r[{i}] is not None else None')
 
             # Fallback to Msgspec
             else:
