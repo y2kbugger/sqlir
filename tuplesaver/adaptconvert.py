@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import enum
 import logging
+import uuid
 from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
@@ -12,6 +14,16 @@ import msgspec
 from .model import RowMeta, is_row_model, native_columntypes
 
 logger = logging.getLogger(__name__)
+
+
+def _is_unquoted_msgspec_type(t: type | Any) -> bool:
+    """When adapting/converting these as root values, we don't want them to be
+    quoted. This will let SQLite operate on them natively, e.g. for datetime
+    comparisons, or for enums to be stored as their int value instead of a JSON string."""
+    try:
+        return issubclass(t, (dt.datetime, dt.date, dt.time, Decimal, enum.Enum, uuid.UUID))
+    except TypeError:
+        return False
 
 
 class AdaptConvertRegistry:
@@ -33,14 +45,11 @@ class AdaptConvertRegistry:
         if typ is bool:
             return int(value)
 
-        if isinstance(value, (dt.datetime, dt.date, dt.time)):
-            return value.isoformat()
+        if _is_unquoted_msgspec_type(typ):
+            return msgspec.to_builtins(value)
 
         if isinstance(value, (bytearray, memoryview)):
             return value
-
-        if isinstance(value, Decimal):
-            return str(value)
 
         # Fallback for Row models - extract id for FK storage
         if is_row_model(typ):
@@ -70,23 +79,16 @@ class AdaptConvertRegistry:
             elif field.type is bool:
                 parts.append(f'bool(r[{i}]) if r[{i}] is not None else None')
 
-            elif field.type is dt.datetime:
-                parts.append(f'_dt.fromisoformat(r[{i}]) if r[{i}] is not None else None')
-
-            elif field.type is dt.date:
-                parts.append(f'_date.fromisoformat(r[{i}]) if r[{i}] is not None else None')
-
-            elif field.type is dt.time:
-                parts.append(f'_time.fromisoformat(r[{i}]) if r[{i}] is not None else None')
-
             elif field.type is bytearray:
                 parts.append(f'bytearray(r[{i}]) if r[{i}] is not None else None')
 
             elif field.type is memoryview:
                 parts.append(f'memoryview(r[{i}]) if r[{i}] is not None else None')
 
-            elif field.type is Decimal:
-                parts.append(f'_Decimal(r[{i}]) if r[{i}] is not None else None')
+            elif _is_unquoted_msgspec_type(field.type):
+                cname = f'_t{i}'
+                ns[cname] = field.type
+                parts.append(f'msgspec.convert(r[{i}], type={cname}) if r[{i}] is not None else None')
 
             # Fallback to Msgspec
             else:

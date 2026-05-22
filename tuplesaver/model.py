@@ -158,6 +158,29 @@ def schematype(FieldType: type) -> str:
         # a yet unregistered foreign key
         return f"{FieldType.__name__}_ID"
     else:
+        import datetime as dt
+        import enum
+        import uuid
+        from decimal import Decimal
+
+        try:
+            match FieldType:
+                case _ if issubclass(FieldType, int) and issubclass(FieldType, enum.Enum):
+                    return "ENUM_INT"
+                case _ if issubclass(FieldType, enum.Enum):
+                    return "ENUM_TEXT"
+                case _ if issubclass(FieldType, dt.datetime):
+                    return "DATETIME_TEXT"
+                case _ if issubclass(FieldType, dt.date):
+                    return "DATE_TEXT"
+                case _ if issubclass(FieldType, dt.time):
+                    return "TIME_TEXT"
+                case _ if issubclass(FieldType, Decimal):
+                    return "DECIMAL_TEXT"
+                case _ if issubclass(FieldType, uuid.UUID):
+                    return "UUID_TEXT"
+        except TypeError:
+            pass
         return "JSON_TEXT"
 
 

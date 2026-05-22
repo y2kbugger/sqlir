@@ -94,8 +94,8 @@ def test_naive_datetime_between_predicate(engine: Engine) -> None:
 def test_mixing_naive_and_aware_datetime_breaks_sort_order(engine: Engine) -> None:
     """
     Lexical sort is WRONG when mixing naive and timezone-aware datetimes.
-    UTC-aware '2024-06-15T12:00:00+00:00' sorts BEFORE naive '2024-06-15T12:00:00.999999'
-    because '+' sorts before '.' in ASCII.
+    UTC-aware '2024-06-15T12:00:00Z' sorts AFTER naive '2024-06-15T12:00:00.999999'
+    because 'Z' sorts after '.' in ASCII.
     This is a known limitation of lexical string sorting: always store datetimes
     in one consistent form.
     """
@@ -115,11 +115,11 @@ def test_mixing_naive_and_aware_datetime_breaks_sort_order(engine: Engine) -> No
     rows = engine.query(T, "SELECT * FROM T ORDER BY ts").fetchall()
     stored_order = [r.ts for r in rows]
 
-    # naive < aware < naive+microseconds
-    # i.e. '12:00:00' < '12:00:00+00:00' < '12:00:00.999999'
+    # naive < naive+microseconds < aware
+    # i.e. '12:00:00' < '12:00:00.999999' < '12:00:00Z'
     # This is NOT chronological order (aware == naive in wall time here)
-    assert stored_order.index(naive) < stored_order.index(aware)
-    assert stored_order.index(aware) < stored_order.index(with_us)
+    assert stored_order.index(naive) < stored_order.index(with_us)
+    assert stored_order.index(with_us) < stored_order.index(aware)
 
 
 def test_sqlite_datetime_funcs_working(engine: Engine) -> None:
@@ -205,10 +205,26 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
     assert returned_row.flag is False
 
 
-def test_can_store_and_retrieve_enum_as_json(engine: Engine) -> None:
-    class Status(str, enum.Enum):
+def test_can_store_and_retrieve_strenum(engine: Engine) -> None:
+    class Status(enum.StrEnum):
         ACTIVE = "active"
         DISABLED = "disabled"
+
+    class T(TableRow):
+        status: Status
+
+    engine.ensure_table_created(T)
+    row = engine.save(T(Status.ACTIVE))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.status is Status.ACTIVE
+
+
+def test_can_store_and_retrieve_intenum(engine: Engine) -> None:
+    class Status(enum.IntEnum):
+        ACTIVE = 1
+        DISABLED = 2
 
     class T(TableRow):
         status: Status
@@ -392,9 +408,15 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
     from decimal import Decimal
     from enum import Enum
 
+    import msgspec
+
     class Color(Enum):
         RED = "red"
         BLUE = "blue"
+
+    class Priority(int, Enum):
+        LOW = 1
+        HIGH = 2
 
     @dataclasses.dataclass
     class MyDC:
@@ -423,34 +445,36 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
         set_val: set[str]
         tuple_val: tuple[int, str]
         dict_simple_val: dict[str, int]
+        int_enum_val: Priority
 
     engine.ensure_table_created(AllTypesModel)
     eastern_tz = dt.timezone(dt.timedelta(hours=-4))
 
-    # Definition format: (field_name, python_input_value, expected_sqlite_type, expected_db_raw_value)
+    # Definition format: (field_name, python_input_value, expected_sqlite_type, expected_db_raw_value, expected_to_builtins)
     matrix = [
         # Native primitives
-        ("i_val", 42, "integer", 42),
-        ("f_val", 3.14, "real", 3.14),
-        ("s_val", "hello", "text", "hello"),
-        ("b", True, "integer", 1),
+        ("i_val", 42, "integer", 42, 42),
+        ("f_val", 3.14, "real", 3.14, 3.14),
+        ("s_val", "hello", "text", "hello", "hello"),
+        ("b", True, "integer", 1, True),
         # Datetimes (Natively stored as unquoted strings)
-        ("dt_val", dt.datetime(2024, 6, 15, 12, 0, 0, tzinfo=eastern_tz), "text", "2024-06-15T12:00:00-04:00"),
-        ("d_val", dt.date(2024, 6, 15), "text", "2024-06-15"),
-        ("t_val", dt.time(12, 0, 0), "text", "12:00:00"),
+        ("dt_val", dt.datetime(2024, 6, 15, 12, 0, 0, tzinfo=eastern_tz), "text", "2024-06-15T12:00:00-04:00", "2024-06-15T12:00:00-04:00"),
+        ("d_val", dt.date(2024, 6, 15), "text", "2024-06-15", "2024-06-15"),
+        ("t_val", dt.time(12, 0, 0), "text", "12:00:00", "12:00:00"),
         # Buffers (Natively stored as blobs)
-        ("by_val", b"raw_bytes", "blob", b"raw_bytes"),
-        ("ba_val", bytearray(b"byte_array"), "blob", b"byte_array"),
-        ("mv_val", memoryview(b"memory_view"), "blob", b"memory_view"),
+        ("by_val", b"raw_bytes", "blob", b"raw_bytes", "cmF3X2J5dGVz"),
+        ("ba_val", bytearray(b"byte_array"), "blob", b"byte_array", "Ynl0ZV9hcnJheQ=="),
+        ("mv_val", memoryview(b"memory_view"), "blob", b"memory_view", "bWVtb3J5X3ZpZXc="),
         # Msgspec JSON fallbacks
-        ("dict_val", {"key": "value"}, "text", '{"key":"value"}'),
-        ("list_val", [1, 2, 3], "text", '[1,2,3]'),
-        ("enum_val", Color.RED, "text", '"red"'),
-        ("custom_val", MyDC(name="test"), "text", '{"name":"test"}'),
-        ("dec_val", Decimal("123.45"), "text", "123.45"),
-        ("set_val", {"single_item"}, "text", '["single_item"]'),
-        ("tuple_val", (1, "two"), "text", '[1,"two"]'),
-        ("dict_simple_val", {"k": 5}, "text", '{"k":5}'),
+        ("dict_val", {"key": "value"}, "text", '{"key":"value"}', {"key": "value"}),
+        ("list_val", [1, 2, 3], "text", '[1,2,3]', [1, 2, 3]),
+        ("enum_val", Color.RED, "text", "red", "red"),
+        ("custom_val", MyDC(name="test"), "text", '{"name":"test"}', {"name": "test"}),
+        ("dec_val", Decimal("123.45"), "text", "123.45", "123.45"),
+        ("set_val", {"single_item"}, "text", '["single_item"]', ["single_item"]),
+        ("tuple_val", (1, "two"), "text", '[1,"two"]', (1, "two")),
+        ("dict_simple_val", {"k": 5}, "text", '{"k":5}', {"k": 5}),
+        ("int_enum_val", Priority.HIGH, "integer", 2, 2),  # int enums use msgspec.to_builtins and map to INTEGER
     ]
 
     # Save to db
@@ -467,20 +491,25 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
     cur.execute(f"SELECT {', '.join(f'typeof({c})' for c in cols)} FROM AllTypesModel WHERE id = ?", (saved.id,))
     raw_types = cur.fetchone()
 
-    for i, (field, _, exp_type, exp_raw) in enumerate(matrix):
+    for i, (field, _, exp_type, exp_raw, _) in enumerate(matrix):
         assert raw_types[i] == exp_type, f"Field '{field}' expected type '{exp_type}', got '{raw_types[i]}'"
         assert raw_values[i] == exp_raw, f"Field '{field}' expected raw {exp_raw!r}, got {raw_values[i]!r}"
 
     # 2. Verify complete TupleSaver round-trip object inflation
     fetched = engine.find(AllTypesModel, saved.id)
 
-    for field, inp_val, _, _ in matrix:
+    for field, inp_val, _, _, _ in matrix:
         fetched_val = getattr(fetched, field)
         if field == "mv_val":
             # memoryviews don't eq each other natively unless same identity, compare by bytes
             assert bytes(fetched_val) == bytes(inp_val)
         else:
             assert fetched_val == inp_val, f"Field '{field}' roundtrip failed: {fetched_val!r} != {inp_val!r}"
+
+    # 3. Verify msgspec.to_builtins conversion
+    for field, inp_val, _, _, exp_builtins in matrix:
+        result = msgspec.to_builtins(inp_val)
+        assert result == exp_builtins, f"Field '{field}' to_builtins failed: {result!r} != {exp_builtins!r}"
 
 
 def test_sqlite_decimal_extension_support(engine: Engine) -> None:

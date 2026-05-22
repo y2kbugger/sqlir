@@ -120,8 +120,29 @@ def test_sqltypename() -> None:
     assert schematype(float) == "REAL"
     assert schematype(bytes) == "BLOB"
     assert schematype(bool) == "BOOL_INT"
-    assert schematype(dt.date) == "JSON_TEXT"
-    assert schematype(dt.datetime) == "JSON_TEXT"
+    assert schematype(dt.date) == "DATE_TEXT"
+    assert schematype(dt.datetime) == "DATETIME_TEXT"
+    assert schematype(dt.time) == "TIME_TEXT"
+
+    from decimal import Decimal
+
+    assert schematype(Decimal) == "DECIMAL_TEXT"
+
+    import uuid
+
+    assert schematype(uuid.UUID) == "UUID_TEXT"
+
+    import enum
+
+    class IEnum(int, enum.Enum):
+        A = 1
+
+    assert schematype(IEnum) == "ENUM_INT"
+
+    class SEnum(enum.Enum):
+        A = "a"
+
+    assert schematype(SEnum) == "ENUM_TEXT"
 
     class UnregisteredType: ...
 
@@ -282,18 +303,18 @@ def test_meta__json_style_fields__preserve_full_type_and_use_jsontext_storage() 
 
     assert schematype(list) == "JSON_TEXT"
     assert schematype(dict) == "JSON_TEXT"
-    assert schematype(dt.date) == "JSON_TEXT"
-    assert schematype(dt.datetime) == "JSON_TEXT"
+    assert schematype(dt.date) == "DATE_TEXT"
+    assert schematype(dt.datetime) == "DATETIME_TEXT"
 
     assert by_name["created_on"].full_type == dt.date
     assert by_name["created_on"].type is dt.date
-    assert by_name["created_on"].sql_typename == "JSON_TEXT"
-    assert by_name["created_on"].sql_columndef == "created_on [JSON_TEXT] NOT NULL"
+    assert by_name["created_on"].sql_typename == "DATE_TEXT"
+    assert by_name["created_on"].sql_columndef == "created_on [DATE_TEXT] NOT NULL"
 
     assert by_name["created_at"].full_type == dt.datetime
     assert by_name["created_at"].type is dt.datetime
-    assert by_name["created_at"].sql_typename == "JSON_TEXT"
-    assert by_name["created_at"].sql_columndef == "created_at [JSON_TEXT] NOT NULL"
+    assert by_name["created_at"].sql_typename == "DATETIME_TEXT"
+    assert by_name["created_at"].sql_columndef == "created_at [DATETIME_TEXT] NOT NULL"
 
     assert by_name["names"].full_type == list[str]
     assert by_name["names"].type == list[str]

@@ -1,9 +1,5 @@
 # WIP
 - unfactor AdapterConvertRegistry into module level. This allows a global model converter cache. there are no longer per-engine differences so we don't need to instaciate a wrapped object. Also the row cursor would no longer need pointer to the instance of the AdapterConvertRegistry, it can just use the module level functions and cache.
-- test and figure out enums that should map to ints?
-- is there a way to leverate msgpack.to_builtins to handle datetime, date, time, and decimal? also is there any benefit to that?
-    - they do all come out as unquoted strings, so it would be a little cleaner than the current custom isoformat approach. and should make storage in root of field vs within json list more consistent.
-    - however, bytes come out as encoded base64 strings, so we would have to specifically choose which fields to apply this to.
 - find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
 
 ## TableRow Model

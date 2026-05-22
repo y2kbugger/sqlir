@@ -21,27 +21,31 @@ These are the only built in type mappings
 
 We also handle the following types automatically:
 
-| Python                                      | SQLite storage | Mechanism                                     |
-|:--------------------------------------------|:---------------|:----------------------------------------------|
-| `bool`                                           | INTEGER     | built-in special case (0/1)                   |
-| `datetime` / `date` / `time`                     | TEXT        | unquoted ISO-8601 string via `.isoformat()`   |
-| `Decimal`                                        | TEXT        | unquoted decimal string via `str()`           |
-| buffer protocol (e.g. `memoryview`, `bytearray`) | BLOB        | apsw auto-adapts via buffer protocol as bytes |
-| `dict`, `list`, `set`, `tuple`                   | TEXT (JSON) | msgspec JSON encode/decode fallback           |
-| `Enum`, `dataclass`, `UUID`                      | TEXT (JSON) | msgspec JSON encode/decode fallback           |
+| Python                                           | SQLite Schema Type     | Mechanism                                            |
+|:-------------------------------------------------|:-----------------------|:-----------------------------------------------------|
+| `bool`                                           | `BOOL_INT` (INTEGER)   | built-in special case (0/1)                          |
+| `datetime`                                       | `DATETIME_TEXT` (TEXT) | unquoted ISO-8601 string via `msgspec.to_builtins()` |
+| `date`                                           | `DATE_TEXT` (TEXT)     | unquoted ISO-8601 string via `msgspec.to_builtins()` |
+| `time`                                           | `TIME_TEXT` (TEXT)     | unquoted ISO-8601 string via `msgspec.to_builtins()` |
+| `Decimal`                                        | `DECIMAL_TEXT` (TEXT)  | unquoted decimal string via `msgspec.to_builtins()`  |
+| `UUID`                                           | `UUID_TEXT` (TEXT)     | unquoted UUID string via `msgspec.to_builtins()`     |
+| `Enum` (String-based)                            | `ENUM_TEXT` (TEXT)     | unquoted string via `msgspec.to_builtins()`          |
+| `Enum` (Integer-based)                           | `ENUM_INT` (INTEGER)   | unquoted int via `msgspec.to_builtins()`             |
+| buffer protocol (e.g. `memoryview`, `bytearray`) | `BLOB` (BLOB)          | apsw auto-adapts via buffer protocol as bytes        |
+| `dict`, `list`, `set`, `tuple`, `dataclass`, etc | `JSON_TEXT` (TEXT)     | msgspec JSON encode/decode fallback                  |
 
 Any other type that msgspec can serialize is stored as JSON. If msgspec cannot serialize the type, it raises at write time.
 
 ### A note on datetime storage and SQLite date functions
 
-All non-native types (including `list`, `dict`, etc.) are stored as **JSON TEXT** (SQLite will report their `typeof()` as `text`). Datetimes (`datetime`, `date`, `time`) are stored as pure unquoted ISO8601 strings. Buffer protocols (`bytes`, `bytearray`, `memoryview`) are stored as raw SQLite `BLOB`.
+Complex types like `list`, `dict`, and `dataclass` are stored as **JSON TEXT** (SQLite will report their `typeof()` as `text`). However, scalar types like `datetime`, `Decimal`, `UUID`, and string `Enum` are stored as pure unquoted strings (also `text` affinity). Integer `Enum`s are stored as plain integers. Buffer protocols (`bytes`, `bytearray`, `memoryview`) are stored as raw SQLite `BLOB`.
 
 Because datetimes are stored as standard `TEXT`:
 - `ORDER BY ts`, `WHERE ts = ?`, `BETWEEN ? AND ?` all work correctly — ISO strings sort lexically
 - SQLite's date functions (`datetime()`, `strftime()`, `julianday()`, etc.) **work natively** on these columns (e.g. `SELECT strftime('%Y', ts)` returns the year)
 - Raw string literals in SQL (`WHERE ts = '2024-06-15T12:00:00'`) **match correctly** without requiring parameter adaptation.
 
-Note: When mixing naive and timezone-aware datetimes, sorting behavior follows ASCII string rules ('+' sorts before '.', meaning aware offsets can sort before microseconds). Always store datetimes in a consistent timezone/format for chronological sorting.
+Note: When mixing naive and timezone-aware datetimes, sorting behavior follows ASCII string rules (e.g. 'Z' sorts after '.', while '+' and '-' sort before '.'). This means aware datetimes can sort incorrectly relative to naive datetimes with microseconds. Always store datetimes in a consistent timezone/format for chronological sorting.
 
 ## sqlite3
 https://docs.python.org/3/library/sqlite3.html
@@ -254,3 +258,6 @@ Set permanently in `./pyproject.toml`:
 db_path = "data/mydb.sqlite"
 models_module = "myapp.models"
 ```
+## sqlite extensions
+apsw bundles these.
+should show example, for instance of turn on an using decimal summation?
