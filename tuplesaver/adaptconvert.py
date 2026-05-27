@@ -11,7 +11,7 @@ from typing import Any
 import apsw
 import msgspec
 
-from .model import RowMeta, is_row_model, native_columntypes
+from .model import RowMeta, is_tablerow_model, native_columntypes
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def adapt_value(value: Any) -> apsw.SQLiteValue:
         return value
 
     # Fallback for Row models - extract id for FK storage
-    if is_row_model(typ):
+    if is_tablerow_model(typ):
         return value.id
 
     # Fallback to msgspec, decode to TEXT for SQLite JSON functions
@@ -81,7 +81,7 @@ def make_converter_for_model(Model: RowMeta) -> Callable[[apsw.SQLiteValues], tu
         except TypeError:
             pass
 
-        if is_native or is_row_model(field.type) or field.type is Any:
+        if is_native or is_tablerow_model(field.type) or field.type is Any:
             parts.append(f'r[{i}]')
 
         elif field.type is bytearray:

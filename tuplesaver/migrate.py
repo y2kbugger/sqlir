@@ -233,7 +233,7 @@ def make_status_summary(result: CheckResult) -> str:
     return f"{label}: {detail}"
 
 
-def _backup_with_retry(backup: object, *, retries: int = 8, delay: float = 0.1) -> None:
+def _backup_with_retry(backup: apsw.Backup, *, retries: int = 8, delay: float = 0.1) -> None:
     """Drive a single apsw backup to completion, retrying on BusyError.
 
     Calls ``step(-1)`` to copy all pages in one shot.  If the source DB
@@ -244,7 +244,7 @@ def _backup_with_retry(backup: object, *, retries: int = 8, delay: float = 0.1) 
 
     for attempt in range(retries):
         try:
-            backup.step(-1)  # type: ignore[union-attr]
+            backup.step(-1)
             return
         except apsw.BusyError:
             if attempt + 1 == retries:
@@ -304,7 +304,11 @@ class Migrate:
         """Get applied migrations as {id: (filename, script)} from _migrations table."""
         self._ensure_migrations_table()
         rows = self.engine.select(Migration)
-        return {row.id: (row.filename, row.script) for row in rows}  # type: ignore[dict-item-type]
+        applied: dict[int, tuple[str, str]] = {}
+        for row in rows:
+            assert row.id is not None
+            applied[int(row.id)] = (row.filename, row.script)
+        return applied
 
     def _get_ref_applied_migrations(self) -> dict[int, tuple[str, str]]:
         """Get applied migrations from the .ref DB as {id: (filename, script)}.
@@ -319,7 +323,11 @@ class Migrate:
             return {}
 
         rows = ref_engine.select(Migration)
-        return {row.id: (row.filename, row.script) for row in rows}  # type: ignore[dict-item-type]
+        applied: dict[int, tuple[str, str]] = {}
+        for row in rows:
+            assert row.id is not None
+            applied[int(row.id)] = (row.filename, row.script)
+        return applied
 
     def _validate_migration_files(self, files: list[tuple[int, str, Path]]) -> list[str]:
         """Validate migration files in the migrations directory.

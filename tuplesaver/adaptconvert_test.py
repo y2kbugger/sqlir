@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 from dataclasses import dataclass
+from typing import Any, cast
 
 import pytest
 
@@ -138,7 +139,9 @@ def test_sqlite_datetime_funcs_working(engine: Engine) -> None:
     cur = engine.connection.cursor()
 
     cur.execute("SELECT typeof(ts) FROM T")
-    assert cur.fetchone()[0] == "text"
+    typeof_row = cur.fetchone()
+    assert typeof_row is not None
+    assert typeof_row[0] == "text"
 
     cur.execute("SELECT datetime(ts), strftime('%Y', ts) FROM T")
     row = cur.fetchone()
@@ -163,14 +166,18 @@ def test_datetime_string_literals_in_sql_match(engine: Engine) -> None:
 
     # raw string literal does successfully match our TEXT storage
     cur.execute("SELECT COUNT(*) FROM T WHERE ts = '2024-06-15T12:00:00'")
-    assert cur.fetchone()[0] == 1
+    literal_match = cur.fetchone()
+    assert literal_match is not None
+    assert literal_match[0] == 1
 
     # adapted ? parameter produces the same BLOB — this works
     from .adaptconvert import adapt_value
 
     adapted = adapt_value(ts)
     cur.execute("SELECT COUNT(*) FROM T WHERE ts = ?", (adapted,))
-    assert cur.fetchone()[0] == 1
+    adapted_match = cur.fetchone()
+    assert adapted_match is not None
+    assert adapted_match[0] == 1
 
 
 def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
@@ -477,7 +484,7 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
     ]
 
     # Save to db
-    record = AllTypesModel(**{m[0]: m[1] for m in matrix})
+    record = AllTypesModel(**cast(Any, {m[0]: m[1] for m in matrix}))
     saved = engine.insert(record)
 
     cur = engine.connection.cursor()
@@ -490,6 +497,9 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
     cur.execute(f"SELECT {', '.join(f'typeof({c})' for c in cols)} FROM AllTypesModel WHERE id = ?", (saved.id,))
     raw_types = cur.fetchone()
 
+    assert raw_values is not None
+    assert raw_types is not None
+
     for i, (field, _, exp_type, exp_raw, _) in enumerate(matrix):
         assert raw_types[i] == exp_type, f"Field '{field}' expected type '{exp_type}', got '{raw_types[i]}'"
         assert raw_values[i] == exp_raw, f"Field '{field}' expected raw {exp_raw!r}, got {raw_values[i]!r}"
@@ -501,7 +511,7 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
         fetched_val = getattr(fetched, field)
         if field == "mv_val":
             # memoryviews don't eq each other natively unless same identity, compare by bytes
-            assert bytes(fetched_val) == bytes(inp_val)
+            assert bytes(fetched_val) == bytes(cast(bytes | bytearray | memoryview, inp_val))
         else:
             assert fetched_val == inp_val, f"Field '{field}' roundtrip failed: {fetched_val!r} != {inp_val!r}"
 
@@ -520,7 +530,9 @@ def test_sqlite_decimal_extension_support(engine: Engine) -> None:
     cur = engine.connection.cursor()
     try:
         cur.execute("SELECT decimal_add('1.2', '2.3')")
-        result = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None
+        result = row[0]
         assert result == "3.5"
     except Exception as e:  # Catch any apsw SQLError
         if "no such function: decimal_add" in str(e):

@@ -1,45 +1,30 @@
 # WIP
-- UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
-- switch to python 3.14 and arbitrary  t string for predicates, e.g.
-    - `engine.select(Model, t"{Model.name} LIKE 'R%'")`
-    - t"""{ScheduleItem.version_datetime} = (
-        SELECT MAX(version_datetime) FROM ScheduleItem
-        WHERE version_type IN ('pre_autoschedule', 'published')
-    )"""
-- python 3.14 deprecates `from __future__ import annotations` and makes it the default, so we can use actual types in type hints instead of strings, e.g. `manager: Employee` instead of `manager: "Employee"`, but there are a few porting notes surrounding the reading of annotations.
-
 
 ## TableRow Model
-- disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
-- Move lazy proxy descriptors to the metaclass
-- Harmonize typing of type[Row] to RowMeta (i think)
-- fix ty and ruff errors in all files
-- move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
-- convert readme and docs and package name away from tuplesaver now that we don't save tuples
 - backfill __tablename__ when it is missing, e.g. just use the class name, test this
+- Move lazy proxy descriptors to the metaclass
+- move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
+- Harmonize typing of type[Row] to RowMeta (i think)
+- convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
 ## APSW Integration
-- combine rowtrace for type converting types and lazy maker all together and maybe don't make it use rowtrace??
+- combine rowtrace for type converting types and lazy maker all together?
 - pragma user_version and pragma application_id for versioning and migrations
 - https://rogerbinns.github.io/apsw/tips.html#query-patterns
 
-
 # Bugs
 - not all models in model browser have a runtime python type showing...why?
-- BE CERTAIN that sqlite range comparisons are going to work for how we store dates.
-- Switch to semi joins in sql query generator auto-joiner
-    - otherwise, fanout happen. Add regression test for this.
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
 
 
 # Testing
-- Test delete by id (no match) and update (via save) id (no match)?
+- Test delete by id (no match) and update id (no match)?
 - Test that basic engine crud operation emit only the expected statements, e.g. no select before update, etc. DO FOR ALL Engine OPERATIONS
-- test `Any` type on TableRow models. Ban? Allow?
+- test `Any` type on Row/TableRow models. Ban? Allow?
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
 - relax eager enforcement of FK Models being registered
     - Test case for this
-- Test case that you cannot subclass a model, e.g.
+- Test case that you cannot subclass a tablemodel, e.g.
     ```python
     class BaseModel(TableRow):
         name: str
@@ -51,8 +36,7 @@
 - unit test for self join also
 - test is_registered_fieldtype
   - unknown types, unregistered models, both Optional and non-Optional variants
-- find/find_by raise if more than one result matched
-- test reensureing model updates if and only if schema has been migrated correctly
+- find, if more than one result matched
 - Test that non Fields greater than zero cannot be called id
 - Test for cyclic data structures e.g. A -> B -> C -> A
 - Test the foreign key may only be a union with None i.e. Optional BUT NOT with int or something else
@@ -74,20 +58,23 @@
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
 - use the assert_type from typing to check type hints
-  - Test types on select (both decorator and non)
+  - Test types on engine.find/select
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
 
 # Next
+- UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
+- types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - interactive restore list too long. can you page restores or head results?
+- Find and remove unused exceptions
 - Ship example.ipynb or output with library
 - ai skill for library usage
-- Find a remove unused exceptions
-- types msgspec cannot encode raise at write time — confirm error message is clear and actionable
-- support sql column defs with default values, e.g. `name: str = "default name"` and then have that be the default value for the column in the create table statement, and also have it be the default value for the field when creating a new instance of the model without specifying that field.
+- python 3.14 deprecates `from __future__ import annotations` and makes it the default, so we can use actual types in type hints instead of strings, e.g. `manager: Employee` instead of `manager: "Employee"`, but there are a few porting notes surrounding the reading of annotations.
+
 
 ## Backpop
+- ONCE FINISHED, un-skip the fanout prevention test, and make sure it actually works.
 - Also considder one to one relationships that backpop to a single instance rather than a list
-- set vs list as typehint?
+- set[M] vs list[M] vs BackPop[M] as typehint?
 - backpop
   ```python
   class Team(NamedTuple):
@@ -172,13 +159,8 @@
 
 
 # Later
-## Better query builder
-right now we always use correlated scaler subqueries for fanout prevention, but EXISTS style semi joins could be much more efficients. we could use EXISTS when we know it would be support and only fall back to subquery when it is not known.
-## leverage tstring for query-ten avoid AST hacking
-## JSONB format - probably a breaking change.....
-## check for valid json on json fields
-## auto pickling type
-make a type annotation like `Pickle[MyType]` that would automatically pickle and unpickle the field, and raise if it fails to pickle or unpickle. This fills a gap left by the expunging of custom adapt/convert pairs.
+## JSONB format - probably a breaking change.....so its soon or never
+Basically we would have to wrap all json fields in a sqlite function call that parses and stores the binary format.
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
 Atomic table replacement that minimizes write-lock duration. Only the rename step holds the lock; all data loading and index building happen outside the critical section.
 
@@ -204,20 +186,10 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
 - Also want to explain querys from engine
   - This could also be an off ramp from engine.select to a more generic query builder, e.g. `engine.query(Model, sql, params)`
 
-
-## Foreign Key enforcement
-Off by default, but can be enabled with
-- `PRAGMA foreign_keys = true;`
-
 ## Migrations
 - consider https://martinfowler.com/articles/evodb.html
-- Improved status detail for declarative migrations, e.g. show diff between file and db object
 - Generate ALTER instead of DROP/CREATE
 - Generate SELECT-INTO for general alters
-- Warning if anyone else has edited the schema since migration has last ran.
-    - Store Schema/application version pragma
-    - could also do this via table schema comparison
-- leave "ensure table created" just for testing? or come up with better way to do it??
 
 ## Connection Management and Concurrency
 - one connection per thread, like RoR AR
@@ -236,20 +208,14 @@ Off by default, but can be enabled with
 https://docs.datomic.com/datomic-overview.html
 
 # One Day Maybe
-- Runtime checking of model fields, e.g. if a field is not in the table, raise an error
-  - This could be useful for making models from adhoc queries. e.g. have it actually tell you what the model should look like.
-- how to express more complex updates like this:
-    `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
+- check for valid json on json fields
+- pickling type, make a type annotation like `Pickle[MyType]` that would automatically pickle and unpickle the field, and raise if it fails to pickle or unpickle. This fills a gap left by the expunging of custom adapt/convert pairs.
+- support sql column defs with default values, e.g. `name: str = "default name"` and then have that be the default value for the column in the create table statement, and also have it be the default value for the field when creating a new instance of the model without specifying that field.
+    - maybe we already have this via field
 - Auto detect or provide a way to santize/escape LIKE params. e.g.  of % or _
 - engine.exists (rails has relation.exists, e.g. Customer.where(first_name: "Ryan").exist
-- scalar accessors, e.g. RoR AR's pick. get one value from one row and one
-  column (technically pick also allows multiple colums) don't see why not just use
-  find/find_by then access the field
+- scalar accessors, e.g. RoR AR's pick. get one value from one row and one. note: this is already built into apsw, engine.get
 - RoR annotate (and sql comments so that later we can use it during observabilites)
-- Consider dropping the injected Engine, and goto a fluent RoR AR style interface
-  - e.g. `row.save()` ipo `engine.save(row)`
-- use return on updates to enable single statement updates with return value?
-- deeper nested type restoration on json fields, e.g. `stats: dict[str, set[int]]` (kinda hard to do fo arbitrary cases)
 
 
 ## Frozen Model
@@ -258,7 +224,7 @@ https://docs.datomic.com/datomic-overview.html
 
 
 ## GROUP BY / Aggregation
-Aggregations queries are more tightly coupled to the adhoc model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
+Aggregations queries are more tightly coupled to Row model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
 just a stylistic choice
 
 To make annotations work, we force usage of `from __future__ import annotations`
@@ -347,7 +313,7 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 ```
 
-## Multi Table Alt Model SELECT, e.g. ror's pluck
+## Row model `SELECT`ing from multiple tables, e.g. ror's `pluck`
 
 ```python
 class Athlete_WithTeamName(NamedTuple):
@@ -378,12 +344,6 @@ SELECT id, name, stats -> '$.spell' as spell
 FROM Character
 ```
 
-## Alternate lambda syntax
-Just a more concise version of the decorator version. might be hard to squeeze into the typehints
-```python
-M, q = select(Athlete)(lambda: f"WHERE name LIKE '%e%'")
-```
-
 ## A way to package queries with models to make view like objects??
 Could be one or more queries for one model. Could have parameters. could want to
 reuse by adding where, or somethiing else??
@@ -400,7 +360,7 @@ sql = f"PRAGMA table_info({Athlete.__name__})"
 
 cols = engine.query(TableInfo, sql).fetchall()
 ```
-Note: this is like RoR AR's scopes
+Note: this is sortof like RoR AR's scopes
   scope :in_print, -> { where(out_of_print: false) }
   scope :out_of_print, -> { where(out_of_print: true) }
   scope :old, -> { where(year_published: ...50.years.ago.year) }
@@ -504,80 +464,20 @@ cdef class CythonFieldDescriptor:
         return f"CythonFieldDescriptor(column={self.column}, index={self.index})"
 ```
 
-
-
-
-
 # Probably Never
 - a true cursor proxy and fetchoneonly helper/wrapper
   - cost penalty for get row benchmark (maybe test again later)
   - a pretty thin wrapper over native functionality
 
 # Never, Will not Implement
-- combining find with find_by
-  - better not to overload too much
 - switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
   - Too much magic and increases boilerplate
   - CON to skipping: lose perfect "refactorability"
 - `Any` for table models
   - it would automatically use the dynamic type adapter, but it would not know which converter to use to get it back to the original type
-- A TypedId as primary key of base models, see `typedid` tag for exploratory implementation
-  - Reason for investigating
-    - Reference a row by a single value, rather than Model+id
-    - could simplify delete/update/get api
-    - could make fetching a relationship row simpler
-      Honors: minimize boilerplate
-  - How
-    - return TypedId replaced during insert
-    - Add adapters for TypedId -> int (only need one, because we are losing the type info)
-    - Add converters for int -> TypedId (need one for each model/table, as we need to add the type info)
-      - One problem here was that you needed use "parse column names" to make the convert recognized.
-        this means there are two different return types to the query, one when you do the converter name in column hint way:
-        `select id as "id [TypedId_MyModel]"`
-        and the normal way:
-        `select id, name`
-        This to me could causes surprises, and also makes types lie if you do a manual query and "forget" to add the type info.
-        It also just makes all the queries noisy to look at.
-        violates
-          - minimize boilerplate
-          - minimize library specific knowledge requirements
-          - actually simple vs seemingly simple
-          - principle of least surprise
-  - Why Not?
-    - The typed ID is just another thing to know, and understand for users
-      - violates actually simple vs seemingly simple
-      - violates minimize library specific knowledge requirements
-    - The supposed benefit of simpler delete api actually hurts readability.
-      ```python
-      engine.delete(some_id)
-      ```
-      is less clear than
-      ```python
-      engine.delete(MyModel, some_id)
-      ```
-      and we already have an overload for deleting a row
-      ```python
-      engine.delete(row)
-      ```
-      This violates choose boilerplate over magic
-    - It is annoying that you have to repeat the Model name in the Model def:
-      ```python
-      class MyModel(NamedTuple):
-          id: Id[MyModel]
-          name: str
-          date: dt.datetime
-      ```
-      Violates minimize boilerplate
 - Add passthrough for commit? e.g. engine.commit
   - just let the user use the existing connection, engine.connection.commit()?
   - Violates, only do what can't be done with the sqlite standard library
-- Allow str serde, i.e. in addtion to the bytes api
-  - just explicitly encode/decode to bytes
-  - Violates choose boilerplate over magic
-- Query builder on engine
-  - just use the query builder directly
-  - Violates choose boilerplate over magic
-  - better to use Model, sql, params as a stable and interoperable intermediate representation
 - `register_adapt_convert` / custom serialization registration API
   - Removed in favor of msgspec as a universal automatic fallback
   - msgspec handles all common types (bool, list, dict, Enum, UUID, datetime, date, time, set, frozenset, NamedTuple, dataclasses) with zero configuration

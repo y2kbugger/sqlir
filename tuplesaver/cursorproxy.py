@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import apsw
 import apsw.unicode
@@ -10,7 +10,7 @@ import apsw.unicode
 from tuplesaver.model import TableRow
 
 # NOTE: cursorproxy.py should only know about .model and .adaptconvert
-from .model import Row, is_row_model
+from .model import Row, is_tablerow_model
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -51,33 +51,37 @@ class Lazy[Model]:
 def _make_model_lazy[R: Row | TableRow](RootModel: type[R], c: apsw.Cursor, root_row: apsw.SQLiteValues, engine: Engine) -> R:
     """Lazy loading of relationships, only fetches sub-models when accessed."""
 
-    # For Roww models, create with kwargs (handles kw_only id field)
-    # dataclasses model
-    field_names = [f for f in RootModel.__dataclass_fields__]
-    row = RootModel(**dict(zip(field_names, root_row, strict=True)))
+    is_table_model = is_tablerow_model(RootModel)
+    model_ctor = cast(Any, RootModel)
 
-    if not is_row_model(RootModel):
+    if is_table_model:
+        row = cast(R, model_ctor(*root_row[1:], id=root_row[0]))
+    else:
+        row = cast(R, model_ctor(*root_row))
         # adhoc dataclass
         return row
 
     RootModel: type[TableRow] = cast(type[TableRow], RootModel)
-    meta = RootModel.meta
+
     # Now iterate over the fields and replace any foreign keys with Lazy proxies
-    for idx, fld in enumerate(meta.fields):
-        if fld.type is not None and is_row_model(fld.type):
+    for idx, fld in enumerate(RootModel.meta.fields):
+        if fld.type is not None and is_tablerow_model(fld.type):
             # Replace with Lazy proxy
+            related_model = cast(type[TableRow], fld.type)
             fk_value = root_row[idx]
             assert isinstance(fk_value, int | type(None))
             if fk_value is not None:
-                row = replace(row, **{fld.name: Lazy(engine, fld.type, fk_value)})
+                row = replace(row, **{fld.name: Lazy(engine, related_model, fk_value)})
 
     return row  # Return the root model with lazy-loaded relationships
 
 
 class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
-    def fetchone(self) -> R | None: ...
+    if TYPE_CHECKING:
 
-    def fetchall(self) -> list[R]: ...  # ty:ignore[invalid-method-override, invalid-return-type]
+        def fetchone(self) -> R | None: ...
+
+        def fetchall(self) -> list[R]: ...  # ty:ignore[invalid-method-override]
 
     @staticmethod
     def proxy_cursor_lazy(Model: type[R], cursor: apsw.Cursor, engine: Engine) -> TypedCursorProxy[R]:

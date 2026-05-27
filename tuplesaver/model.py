@@ -31,12 +31,12 @@ class RowMeta(type):
         if "__dataclass_fields__" not in new_cls.__dict__:
             # Temporarily block __getattr__ from returning FieldExprs so dataclass
             # doesn't mistake them for default values.
-            new_cls._is_dataclass_parsing = True
+            new_cls._is_dataclass_parsing = True  # ty:ignore[unresolved-attribute]
             new_cls = dataclass(new_cls)
-            new_cls._is_dataclass_parsing = False
+            new_cls._is_dataclass_parsing = False  # noqa: SLF001
 
         # Add lazy _meta descriptor, subclasses each get their own Meta instance, thats why we add it here.
-        new_cls.meta = LazyMeta()  # type: ignore[attr-defined]
+        new_cls.meta = LazyMeta()  # ty:ignore[invalid-assignment]
 
         return new_cls
 
@@ -60,9 +60,9 @@ class TypedId[M](int):
     _model: type[M]
 
     def __new__(cls, value: int, model: type[M]):
-        obj = int.__new__(cls, value)
-        obj._model = model
-        return obj
+        self = int.__new__(cls, value)
+        self._model = model
+        return self
 
     def __repr__(self) -> str:
         return f"{self._model.__name__}Id({int(self)})"
@@ -76,10 +76,13 @@ class TableRow(metaclass=RowMeta):
     id: TypedId | int | None = field(default=None, kw_only=True)
 
     @classmethod
-    def Id(cls, id_val: int) -> Any:
+    def Id(cls, id_val: int | TypedId[Any] | None) -> Any:
         from .rel import FieldExpr
 
-        return FieldExpr("id", cls) == id_val
+        if id_val is None:
+            raise ValueError(f"{cls.__name__}.Id() requires a persisted id, got None")
+
+        return FieldExpr("id", cls) == int(id_val)
 
 
 class ModelDefinitionError(Exception):
@@ -115,8 +118,8 @@ native_columntypes: dict[type, str] = {
 }
 
 
-def is_row_model(cls: object) -> bool:
-    """Test at runtime whether an object is a Row, e.g. a TableRow model."""
+def is_tablerow_model(cls: object) -> bool:
+    """Test at runtime whether an object is a TableRow model."""
     return isinstance(cls, type) and issubclass(cls, TableRow)
 
 
@@ -150,7 +153,7 @@ def make_model_meta(Model: type[TableRow]) -> Meta:
             type=FieldType,
             full_type=full_type,
             nullable=nullable,
-            is_fk=is_row_model(FieldType),
+            is_fk=is_tablerow_model(FieldType),
             is_pk=fieldname == "id",
             sql_typename=schematype(FieldType),
             sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
@@ -191,7 +194,7 @@ def schematype(FieldType: type) -> str:
         return native_columntypes[FieldType]
     elif FieldType is bool:
         return "BOOL_INT"
-    elif is_row_model(FieldType):
+    elif is_tablerow_model(FieldType):
         # a yet unregistered foreign key
         return f"{FieldType.__name__}_ID"
     else:
@@ -235,7 +238,7 @@ def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
     columntype = schematype(FieldType)
 
     # Add FK constraint for related models
-    if is_row_model(FieldType):
+    if is_tablerow_model(FieldType):
         fk_table = getattr(FieldType, '__tablename__', None) or FieldType.__name__
         fk_clause = f" REFERENCES {fk_table}(id)"
     else:

@@ -134,7 +134,7 @@ def test_ensure_table_created_with_table_already_created_correct_is_silent(engin
 
 
 def test_ensure_table_created_with_table_already_created_incorrect_raises(engine: Engine) -> None:
-    class TblAlreadyCreated(TableRow):  # type: ignore shadowing is part of the test
+    class TblAlreadyCreated(TableRow):
         name: str
         age: int
 

@@ -13,7 +13,7 @@ from .model import (
     TableRow,
     _sql_columndef,
     _unwrap_optional_type,
-    is_row_model,
+    is_tablerow_model,
     schematype,
 )
 
@@ -40,20 +40,17 @@ def test_unwrap_optional_type() -> None:
     assert _unwrap_optional_type(int | str | None) == (True, int | str)
 
     # Unions not including None
-    U = Union[int, str]  # noqa: UP007
-    UT = int | str
-    assert U == UT
-    assert _unwrap_optional_type(U) == (False, int | str)
-    assert _unwrap_optional_type(UT) == (False, int | str)
+    assert _unwrap_optional_type(Union[int, str]) == (False, int | str)  # noqa: UP007
+    assert _unwrap_optional_type(int | str) == (False, int | str)
 
     # Types nested within optional
-    assert _unwrap_optional_type(Union[U, None]) == (True, int | str)  # noqa: UP007
-    assert _unwrap_optional_type(Optional[U]) == (True, int | str)  # noqa: UP045
-    assert _unwrap_optional_type((U) | None) == (True, int | str)
+    assert _unwrap_optional_type(Union[int | str, None]) == (True, int | str)  # noqa: UP007
+    assert _unwrap_optional_type(Optional[int | str]) == (True, int | str)  # noqa: UP045
+    assert _unwrap_optional_type((int | str) | None) == (True, int | str)
 
-    assert _unwrap_optional_type(Union[UT, None]) == (True, int | str)  # noqa: UP007
-    assert _unwrap_optional_type(Optional[UT]) == (True, int | str)  # noqa: UP045
-    assert _unwrap_optional_type((UT) | None) == (True, int | str)
+    assert _unwrap_optional_type(Union[Union[int, str], None]) == (True, int | str)  # noqa: UP007
+    assert _unwrap_optional_type(Optional[int | str]) == (True, int | str)  # noqa: UP045
+    assert _unwrap_optional_type((Union[int, str]) | None) == (True, int | str)  # noqa: UP007
 
     # Nest unions are flattened and deduped and thus nested optionals are not preserved
     OU = Optional[int | None]  # noqa: UP045
@@ -74,27 +71,27 @@ def test_unwrap_optional_type() -> None:
 
 
 def test_is_row_model() -> None:
-    assert is_row_model(int) is False
-    assert is_row_model(str) is False
-    assert is_row_model(float) is False
-    assert is_row_model(bytes) is False
-    assert is_row_model(None) is False
-    assert is_row_model(tuple) is False
-    assert is_row_model(int | str) is False
-    assert is_row_model(int | None) is False
+    assert is_tablerow_model(int) is False
+    assert is_tablerow_model(str) is False
+    assert is_tablerow_model(float) is False
+    assert is_tablerow_model(bytes) is False
+    assert is_tablerow_model(None) is False
+    assert is_tablerow_model(tuple) is False
+    assert is_tablerow_model(int | str) is False
+    assert is_tablerow_model(int | None) is False
 
     class Model(TableRow):
         name: str
 
-    assert is_row_model(Model) is True
-    assert is_row_model(Model) is True
-    assert is_row_model(Model | None) is False  # you have to unwrap it yourself
-    assert is_row_model(Model | int) is False  # invalid
+    assert is_tablerow_model(Model) is True
+    assert is_tablerow_model(Model) is True
+    assert is_tablerow_model(Model | None) is False  # you have to unwrap it yourself
+    assert is_tablerow_model(Model | int) is False  # invalid
 
     class NTModel(NamedTuple):
         name: str
 
-    assert is_row_model(NTModel) is False
+    assert is_tablerow_model(NTModel) is False
 
     import dataclasses
 
@@ -102,16 +99,16 @@ def test_is_row_model() -> None:
     class DCModel:
         name: str
 
-    assert is_row_model(DCModel) is False
+    assert is_tablerow_model(DCModel) is False
 
     class AdHocModel(Row):
         score: float
 
-    assert is_row_model(AdHocModel) is False
+    assert is_tablerow_model(AdHocModel) is False
 
     class Obj: ...
 
-    assert is_row_model(Obj) is False
+    assert is_tablerow_model(Obj) is False
 
 
 def test_sqltypename() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any, cast
 
 import apsw
 import pytest
@@ -83,7 +84,7 @@ def test_find__id_no_match(engine: Engine) -> None:
 
 def test_find__adhoc_model(engine: Engine) -> None:
     with pytest.raises(apsw.SQLError):
-        engine.find(AdHoc, 1)  # ty:ignore[invalid-argument-type]
+        engine.find(AdHoc, 1)
 
 
 def test_find_by__field(engine: Engine) -> None:
@@ -323,7 +324,7 @@ def test_save__null_relation(engine: Engine) -> None:
 
 def test_save__none_in_not_null_column__raises(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = Team("Lions", None)
+    row = Team("Lions", cast(Any, None))
 
     with pytest.raises(apsw.ConstraintError, match="NOT NULL constraint failed"):
         engine.insert(row)

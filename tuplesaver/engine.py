@@ -16,7 +16,7 @@ from .cursorproxy import TypedCursorProxy
 from .model import (
     Row,
     TableRow,
-    is_row_model,
+    is_tablerow_model,
 )
 from .sql import (
     generate_create_table_ddl,
@@ -98,7 +98,7 @@ class Engine:
         self.connection.cursor_factory = AdaptConvertCursor
 
     def ensure_table_created(self, Model: type[TableRow]) -> None:
-        assert is_row_model(Model), f"Model `{Model.__name__}` is not a valid table model."
+        assert is_tablerow_model(Model), f"Model `{Model.__name__}` is not a valid table model."
         meta = Model.meta
 
         ddl = generate_create_table_ddl(Model)
@@ -228,7 +228,7 @@ class Engine:
         # Don't allow saving if a related row is not persisted
         for f in fields(row)[1:]:  # skip id field
             related_row = getattr(row, f.name)
-            if is_row_model(related_row.__class__) and related_row.id is None:
+            if is_tablerow_model(related_row.__class__) and related_row.id is None:
                 raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
 
         Model = type(row)

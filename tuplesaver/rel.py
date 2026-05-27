@@ -4,10 +4,10 @@ from typing import Any
 class Expr:
     __hash__ = object.__hash__
 
-    def __eq__(self, other: Any) -> Expr:  # type: ignore[override]
+    def __eq__(self, other: Any) -> Expr:  # type: ignore[override, ty:invalid-method-override]
         return BinaryExpr(self, "==", other)
 
-    def __ne__(self, other: Any) -> Expr:  # type: ignore[override]
+    def __ne__(self, other: Any) -> Expr:  # type: ignore[override, ty:invalid-method-override]
         return BinaryExpr(self, "!=", other)
 
     def __lt__(self, other: Any) -> Expr:
@@ -33,7 +33,6 @@ class Expr:
 
     def __rand__(self, other: Any) -> Expr:
         return LogicalExpr(other, "AND", self)
-
 
 
 class FieldExpr(Expr):

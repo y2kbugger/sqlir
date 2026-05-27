@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Any, cast
 
+from .model import Meta, TableRow
 from .rel import BinaryExpr, FieldExpr, LogicalExpr
 
 
-def _build_exists(BaseModel: type, path: str, op: str, value_sql: str) -> str:
+def _build_exists(BaseModel: type[TableRow], path: str, op: str, value_sql: str) -> str:
     parts = path.split('.')
     op = {"==": "="}.get(op, op)
 
@@ -13,13 +14,13 @@ def _build_exists(BaseModel: type, path: str, op: str, value_sql: str) -> str:
     meta = BaseModel.meta
     outer_alias = BaseModel.meta.table_name
 
-    def step(i: int, current_meta, current_alias: str, indent: str) -> str:
+    def step(i: int, current_meta: Meta, current_alias: str, indent: str) -> str:
         if i == len(parts) - 1:
             return f"{current_alias}.{parts[i]} {op} {value_sql}"
 
         attr = parts[i]
         field = next(f for f in current_meta.fields if f.name == attr)
-        next_meta = field.type.meta
+        next_meta = cast(type[TableRow], field.type).meta
         next_alias = f"{current_alias}_{attr}" if current_alias != BaseModel.meta.table_name else attr
 
         inner = step(i + 1, next_meta, next_alias, indent + "    ")
@@ -29,7 +30,7 @@ def _build_exists(BaseModel: type, path: str, op: str, value_sql: str) -> str:
     return step(0, meta, outer_alias, "")
 
 
-def _build_scalar_subquery(BaseModel: type, path: str) -> str:
+def _build_scalar_subquery(BaseModel: type[TableRow], path: str) -> str:
     parts = path.split('.')
     if len(parts) == 1:
         return f"{BaseModel.meta.table_name}.{parts[0]}"
@@ -37,13 +38,13 @@ def _build_scalar_subquery(BaseModel: type, path: str) -> str:
     meta = BaseModel.meta
     outer_alias = BaseModel.meta.table_name
 
-    def step(i: int, current_meta, current_alias: str) -> str:
+    def step(i: int, current_meta: Meta, current_alias: str) -> str:
         if i == len(parts) - 1:
             return f"{current_alias}.{parts[i]}"
 
         attr = parts[i]
         field = next(f for f in current_meta.fields if f.name == attr)
-        next_meta = field.type.meta
+        next_meta = cast(type[TableRow], field.type).meta
         next_alias = f"{current_alias}_{attr}" if current_alias != BaseModel.meta.table_name else attr
 
         inner = step(i + 1, next_meta, next_alias)
@@ -63,10 +64,10 @@ def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple
             if i < len(interpolations):
                 interp = interpolations[i]
                 val = interp.value
-                if isinstance(val, FieldExpr) and val._model:
-                    sql_parts.append(_build_scalar_subquery(val._model, val._name))
+                if isinstance(val, FieldExpr) and val._model:  # noqa: SLF001
+                    sql_parts.append(_build_scalar_subquery(val._model, val._name))  # noqa: SLF001
                 elif hasattr(val, "_name"):
-                    sql_parts.append(val._name)
+                    sql_parts.append(val._name)  # noqa: SLF001
                 elif hasattr(val, "op"):
                     sub_sql, param_idx = compile_expr(val, params, param_idx)
                     sql_parts.append(sub_sql)
@@ -84,8 +85,8 @@ def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple
         param_name = f"p{param_idx}"
         params[param_name] = expr.right
 
-        if isinstance(expr.left, FieldExpr) and expr.left._model:
-            sql = _build_exists(expr.left._model, expr.left._name, expr.op, f":{param_name}")
+        if isinstance(expr.left, FieldExpr) and expr.left._model:  # noqa: SLF001
+            sql = _build_exists(expr.left._model, expr.left._name, expr.op, f":{param_name}")  # noqa: SLF001
             return sql, param_idx + 1
         else:
             field_name = getattr(expr.left, "_name", str(expr.left))

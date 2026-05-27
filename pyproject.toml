@@ -80,7 +80,7 @@ indent-width = 4
 
 [tool.ruff.lint]
 select = ["FIX", "TD", "F", "A", "COM", "B", "C4", "E", "U", "ERA", "W1", "W2", "I", "ANN001", "ANN201", "RUF100", "ICN", "SLF", "SIM","PTH","PD","RUF"]
-ignore = ["TD001", "TD002", "TD003", "SIM105", "PD901", "PD010", "PD002", "PD008", "FIX002", "COM812", "SIM102", "SIM108", "C408", "C416", "E731", "SIM103"]
+ignore = ["TD001", "TD002", "TD003", "SIM105", "PD010", "PD002", "PD008", "FIX002", "COM812", "SIM102", "SIM108", "C408", "C416", "E731", "SIM103"]
 
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ["F811"]  # pytest fixture re-imports look like redefinitions

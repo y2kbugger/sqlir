@@ -193,14 +193,14 @@ def test_proxy__when_querying_view_model__does_not_register_as_table_model(engin
     class ModelA(Row):
         name: str
 
-    from .model import is_row_model
+    from .model import is_tablerow_model
 
-    assert is_row_model(ModelA) is False
+    assert is_tablerow_model(ModelA) is False
 
     cur = engine.query(ModelA, "SELECT 'Alice' as name;")
 
-    assert is_row_model(ModelA) is False
+    assert is_tablerow_model(ModelA) is False
 
     cur.fetchone()
 
-    assert is_row_model(ModelA) is False
+    assert is_tablerow_model(ModelA) is False
