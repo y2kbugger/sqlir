@@ -66,12 +66,23 @@ def make_converter_for_model(Model: RowMeta) -> Callable[[apsw.SQLiteValues], tu
     parts: list[str] = []
 
     for i, field in enumerate(Model.meta.fields):
-        # Pass-through condition: natives, FKs, or Any
-        if field.type in native_columntypes or is_row_model(field.type) or field.type is Any:
-            parts.append(f'r[{i}]')
-
-        elif field.type is bool:
+        if field.type is bool:
             parts.append(f'bool(r[{i}]) if r[{i}] is not None else None')
+            continue
+
+        # Pass-through condition: natives, FKs, or Any
+        is_native = False
+        try:
+            if field.type in native_columntypes or issubclass(field.type, tuple(native_columntypes.keys())):
+                import enum
+
+                if not issubclass(field.type, enum.Enum):
+                    is_native = True
+        except TypeError:
+            pass
+
+        if is_native or is_row_model(field.type) or field.type is Any:
+            parts.append(f'r[{i}]')
 
         elif field.type is bytearray:
             parts.append(f'bytearray(r[{i}]) if r[{i}] is not None else None')

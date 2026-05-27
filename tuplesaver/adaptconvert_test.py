@@ -16,9 +16,9 @@ def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     now = dt.datetime.now()
-    row = engine.save(T(now))
+    row = engine.insert(T(now))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.date == now
 
@@ -29,9 +29,9 @@ def test_datetime_roundtrip_preserves_microseconds(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     ts = dt.datetime(2024, 6, 15, 12, 30, 45, 123456)
-    row = engine.save(T(ts))
+    row = engine.insert(T(ts))
 
-    assert engine.find(T, row.id).ts == ts
+    assert engine.find(T, T.Id(row.id)).ts == ts
 
 
 def test_datetime_roundtrip_preserves_utc_timezone(engine: Engine) -> None:
@@ -40,9 +40,9 @@ def test_datetime_roundtrip_preserves_utc_timezone(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     ts = dt.datetime(2024, 6, 15, 12, 0, 0, tzinfo=dt.UTC)
-    row = engine.save(T(ts))
+    row = engine.insert(T(ts))
 
-    returned = engine.find(T, row.id)
+    returned = engine.find(T, T.Id(row.id))
     assert returned.ts == ts
     assert returned.ts.tzinfo is not None
 
@@ -61,7 +61,7 @@ def test_naive_datetime_lexical_sort_order(engine: Engine) -> None:
 
     # insert out of order
     for ts in [t3, t1, t4, t2]:
-        engine.save(T(ts))
+        engine.insert(T(ts))
 
     rows = engine.query(T, "SELECT * FROM T ORDER BY ts").fetchall()
     assert [r.ts for r in rows] == [t1, t2, t3, t4]
@@ -81,7 +81,7 @@ def test_naive_datetime_between_predicate(engine: Engine) -> None:
     t_after = dt.datetime(2025, 1, 1, 0, 0, 0)
 
     for ts in [t_before, t_start, t_mid, t_end, t_after]:
-        engine.save(T(ts))
+        engine.insert(T(ts))
 
     rows = engine.query(
         T,
@@ -110,7 +110,7 @@ def test_mixing_naive_and_aware_datetime_breaks_sort_order(engine: Engine) -> No
     with_us = dt.datetime(2024, 6, 15, 12, 0, 0, 999999)  # naive + microseconds
 
     for ts in [aware, naive, with_us]:
-        engine.save(T(ts))
+        engine.insert(T(ts))
 
     rows = engine.query(T, "SELECT * FROM T ORDER BY ts").fetchall()
     stored_order = [r.ts for r in rows]
@@ -133,7 +133,7 @@ def test_sqlite_datetime_funcs_working(engine: Engine) -> None:
         ts: dt.datetime
 
     engine.ensure_table_created(T)
-    engine.save(T(dt.datetime(2024, 6, 15, 12, 0, 0, 123456)))
+    engine.insert(T(dt.datetime(2024, 6, 15, 12, 0, 0, 123456)))
 
     cur = engine.connection.cursor()
 
@@ -157,7 +157,7 @@ def test_datetime_string_literals_in_sql_match(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     ts = dt.datetime(2024, 6, 15, 12, 0, 0)
-    engine.save(T(ts))
+    engine.insert(T(ts))
 
     cur = engine.connection.cursor()
 
@@ -179,9 +179,9 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     today = dt.date.today()
-    row = engine.save(T(today))
+    row = engine.insert(T(today))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.date == today
 
@@ -191,15 +191,15 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
         flag: bool
 
     engine.ensure_table_created(T)
-    row = engine.save(T(True))
+    row = engine.insert(T(True))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.flag is True
 
-    row = engine.save(T(False))
+    row = engine.insert(T(False))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.flag is False
 
@@ -213,9 +213,9 @@ def test_can_store_and_retrieve_strenum(engine: Engine) -> None:
         status: Status
 
     engine.ensure_table_created(T)
-    row = engine.save(T(Status.ACTIVE))
+    row = engine.insert(T(Status.ACTIVE))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.status is Status.ACTIVE
 
@@ -229,9 +229,9 @@ def test_can_store_and_retrieve_intenum(engine: Engine) -> None:
         status: Status
 
     engine.ensure_table_created(T)
-    row = engine.save(T(Status.ACTIVE))
+    row = engine.insert(T(Status.ACTIVE))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.status is Status.ACTIVE
 
@@ -242,9 +242,9 @@ def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     names = ["Alice", "Bob", "Charlie", 2]
-    row = engine.save(T(names))
+    row = engine.insert(T(names))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.names == names
 
@@ -255,9 +255,9 @@ def test_can_store_and_retrieve_typed_list_as_json(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     names = ["Alice", "Bob", "Charlie"]
-    row = engine.save(T(names))
+    row = engine.insert(T(names))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.names == names
 
@@ -268,9 +268,9 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     names = {"Alice": 1, "Bob": 2, "Charlie": 3}
-    row = engine.save(T(names))
+    row = engine.insert(T(names))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.names == names
 
@@ -281,9 +281,9 @@ def test_can_store_and_retrieve_typed_dict_as_json(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     counts = {"Alice": 1, "Bob": 2, "Charlie": 3}
-    row = engine.save(T(counts))
+    row = engine.insert(T(counts))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.counts == counts
 
@@ -294,9 +294,9 @@ def test_can_store_and_retrieve_nested_typed_json_as_json(engine: Engine) -> Non
 
     engine.ensure_table_created(T)
     payload = [{"a": 1}, {"b": 2, "c": 3}]
-    row = engine.save(T(payload))
+    row = engine.insert(T(payload))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.payload == payload
 
@@ -313,9 +313,9 @@ def test_can_store_and_retrieve_dataclass_as_json(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     payload = JsonDataClass(name="Alice", score=42)
-    row = engine.save(T(payload))
+    row = engine.insert(T(payload))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.payload == payload
 
@@ -329,9 +329,9 @@ def test_can_store_and_retrieve_list_of_dataclass_as_json(engine: Engine) -> Non
         JsonDataClass(name="Alice", score=42),
         JsonDataClass(name="Bob", score=7),
     ]
-    row = engine.save(T(payload))
+    row = engine.insert(T(payload))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.payload == payload
 
@@ -345,9 +345,9 @@ def test_can_store_and_retrieve_nested_dataclass_json_as_json(engine: Engine) ->
         "alpha": [JsonDataClass(name="Alice", score=42)],
         "beta": [JsonDataClass(name="Bob", score=7), JsonDataClass(name="Charlie", score=3)],
     }
-    row = engine.save(T(payload))
+    row = engine.insert(T(payload))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.payload == payload
 
@@ -361,9 +361,9 @@ def test_can_store_and_retrieve_a_list_of_datetimes_as_json(engine: Engine) -> N
         dt.datetime(2024, 6, 15, 12, 0, 0),
         dt.datetime(2024, 6, 16, 13, 30, 0),
     ]
-    row = engine.save(T(payload))
+    row = engine.insert(T(payload))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.payload == payload
 
@@ -374,9 +374,9 @@ def test_can_store_and_retrieve_a_set_of_int_as_json(engine: Engine) -> None:
 
     engine.ensure_table_created(T)
     payload = {1, 2, 3}
-    row = engine.save(T(payload))
+    row = engine.insert(T(payload))
 
-    returned_row = engine.find(T, row.id)
+    returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.payload == payload
 
@@ -393,7 +393,7 @@ def test_raises_on_json_when_not_msgspec_encodeable(engine: Engine) -> None:
     unserializable_object = Unserializable()
 
     with pytest.raises(TypeError, match="Encoding objects of type Unserializable is unsupported"):
-        engine.save(T([unserializable_object]))
+        engine.insert(T([unserializable_object]))
 
 
 def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) -> None:
@@ -478,7 +478,7 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
 
     # Save to db
     record = AllTypesModel(**{m[0]: m[1] for m in matrix})
-    saved = engine.save(record)
+    saved = engine.insert(record)
 
     cur = engine.connection.cursor()
     cols = [m[0] for m in matrix]
@@ -495,7 +495,7 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
         assert raw_values[i] == exp_raw, f"Field '{field}' expected raw {exp_raw!r}, got {raw_values[i]!r}"
 
     # 2. Verify complete TupleSaver round-trip object inflation
-    fetched = engine.find(AllTypesModel, saved.id)
+    fetched = engine.find(AllTypesModel, AllTypesModel.Id(saved.id))
 
     for field, inp_val, _, _, _ in matrix:
         fetched_val = getattr(fetched, field)

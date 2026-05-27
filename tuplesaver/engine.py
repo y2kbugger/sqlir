@@ -5,7 +5,7 @@ import os
 import re
 from collections.abc import Sequence
 from dataclasses import fields
-from typing import Any, overload
+from typing import Any
 
 import apsw
 
@@ -22,10 +22,8 @@ from .sql import (
     generate_create_table_ddl,
     generate_delete_sql,
     generate_insert_sql,
-    generate_select_by_field_sql,
     generate_select_sql,
     generate_update_set_fields_sql,
-    generate_update_sql,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +61,8 @@ class IdNoneError(ValueError):
 
 
 class RecordNotFoundError(ValueError):
-    pass
+    def __init__(self, model_name: str, target: Any) -> None:
+        super().__init__(f"No row found for {model_name} matching {target}")
 
 
 class NoRecordToUpdateError(ValueError):
@@ -134,55 +133,88 @@ class Engine:
             raise e
 
     ##### Reading
-    def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R:
-        """Find a row by its id. This is a special case of find_by."""
-        if row_id is None:
-            raise IdNoneError("Cannot SELECT, id=None")
-        if not is_row_model(Model):
-            raise LookupByAdHocModelImpossible(Model.__name__)
-
-        row = self.find_by(Model, id=row_id)
-
-        if row is None:
-            raise RecordNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
-
-        return row
-
-    def find_by[R: Row | TableRow](self, Model: type[R], **kwargs: Any) -> R | None:
-        """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
-
-        if not kwargs:
-            raise NoKwargFieldSpecifiedError()
-
-        cur = self.select(Model, **kwargs)
-        row = cur.fetchone()
-        cur.close()
-
-        return row
-
-    def select[R: Row | TableRow](self, Model: type[R], **kwargs: Any) -> TypedCursorProxy[R]:
-        """Select rows by fields, returning a cursor proxy.
-
-        With no kwargs, selects all rows. With kwargs, adds a WHERE clause.
-        Like find_by, but returns a TypedCursorProxy[R] instead of a single row.
-        """
+    def find[R: Row | TableRow](self, Model: type[R], target: Any, /, *, order: str | None = None) -> R:
+        """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found."""
+        from .rel_compiler import compile_expr
 
         meta = Model.meta
 
         if meta.table_name is None:
             raise LookupByAdHocModelImpossible(meta.model_name)
 
-        if kwargs:
-            field_names = [f.name for f in meta.fields]
-            if not all(k in field_names for k in kwargs):
-                raise InvalidKwargFieldSpecifiedError(Model, kwargs)
-            sql: str = generate_select_by_field_sql(Model, frozenset(kwargs.keys()))  # typing see https://github.com/astral-sh/ty/issues/1179
-        else:
+        sql = generate_select_sql(Model)
+        params: dict[str, Any] = {}
+
+        if target is not None:
+            where_clause, _ = compile_expr(target, params)
+            if where_clause:
+                sql += f" WHERE {where_clause}"
+
+        if order:
+            sql += f" ORDER BY {order}"
+        sql += " LIMIT 1"
+
+        cur = self.query(Model, sql, params)
+        row = cur.fetchone()
+        cur.close()
+
+        if row is None:
+            raise RecordNotFoundError(Model.__name__, target)
+        return row
+
+    def select[R: Row | TableRow](self, Model: type[R], target: Any = None, /, *, order: str | None = None, limit: int | None = None, offset: int | None = None) -> list[R]:
+        """Select rows by a relational expression, returning a list of rows.
+
+        If target is missing, selects all rows.
+        """
+        from .rel_compiler import compile_expr
+
+        meta = Model.meta
+
+        if meta.table_name is None:
+            raise LookupByAdHocModelImpossible(meta.model_name)
+
+        sql = generate_select_sql(Model)
+        params: dict[str, Any] = {}
+
+        if target is not None:
+            where_clause, _ = compile_expr(target, params)
+            if where_clause:
+                sql += f" WHERE {where_clause}"
+
+        if order:
+            sql += f" ORDER BY {order}"
+        if limit is not None:
+            sql += f" LIMIT {limit}"
+        if offset is not None:
+            sql += f" OFFSET {offset}"
+
+        cur = self.query(Model, sql, params)
+        res = cur.fetchall()
+        cur.close()
+        return res
+
+    def query[R: Row | TableRow](self, Model: type[R], sql_or_rel: Any = None, parameters: Sequence | dict | None = None) -> TypedCursorProxy[R]:
+        if not isinstance(sql_or_rel, str):
+            from .rel_compiler import compile_expr
+
             sql = generate_select_sql(Model)
+            params: dict[str, Any] = {}
+            if sql_or_rel is not None:
+                where_clause, _ = compile_expr(sql_or_rel, params)
+                if where_clause:
+                    sql += f" WHERE {where_clause}"
+            if parameters:
+                if isinstance(parameters, dict):
+                    params.update(parameters)
+                else:
+                    raise ValueError("Can only use dict parameters when providing a relational expression")
+            parameters = params
+        else:
+            sql = sql_or_rel
+            if parameters is None:
+                parameters = tuple()
 
-        return self.query(Model, sql, kwargs)
-
-    def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         if isinstance(parameters, dict):
             parameters = {k: adapt_value(v) if v is not None else None for k, v in parameters.items()}
         elif parameters:
@@ -191,13 +223,8 @@ class Engine:
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
     #### Writing
-    def save[R: TableRow](self, row: R, *, force_insert: bool = False) -> R:
-        """insert or update records, based on the presence of an id.
-
-        If force_insert=True, always INSERT even when id is already set.
-        This is useful for seeding data or restoring rows with known ids.
-        """
-
+    def insert[R: TableRow](self, row: R) -> R:
+        """Insert a record."""
         # Don't allow saving if a related row is not persisted
         for f in fields(row)[1:]:  # skip id field
             related_row = getattr(row, f.name)
@@ -205,79 +232,56 @@ class Engine:
                 raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
 
         Model = type(row)
+        insert = generate_insert_sql(Model)
+        cur = self.query(Model, insert, vars(row))
+        result = cur.fetchone()
+        cur.close()
+        assert result is not None  # INSERT always returns a row on success
+        return result
 
-        if row.id is None or force_insert:
-            insert = generate_insert_sql(Model)
-            cur = self.query(Model, insert, vars(row))
-            result = cur.fetchone()
-            cur.close()
-            assert result is not None  # INSERT always returns a row on success
-            return result
-        else:
-            update = generate_update_sql(Model)
-            cur = self.query(Model, update, vars(row))
-            result = cur.fetchone()
-            cur.close()
-            if result is None:
-                raise NoRecordToUpdateError(f"Cannot UPDATE, no row with id={row.id} in table `{Model.__name__}`")
-            return result
+    def update(self, Model: type[TableRow], target: Any, /, **patch: Any) -> int:
+        """Update records matching the target expression."""
+        from .rel_compiler import compile_expr
 
-    @overload
-    def update[R: TableRow](self, Model: type[R], row_id: int | None, **kwargs: Any) -> R: ...
+        if target is None:
+            return 0
 
-    @overload
-    def update[R: TableRow](self, row: R, **kwargs: Any) -> R: ...
-
-    def update[R: TableRow](self, Model_or_row: type[R] | R, row_id: int | None = None, **kwargs: Any) -> R:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
-        if not isinstance(Model_or_row, type):
-            row = Model_or_row
-            Model: type[R] = type(row)
-            assert row_id is None, "Do not provide row_id when passing a row instance."
-            row_id = row.id
-        else:
-            Model: type[R] = Model_or_row
-            row = None
-
-        if row_id is None:
-            raise IdNoneError("Cannot UPDATE, id=None")
-
-        if not kwargs:
+        if not patch:
             raise NoKwargFieldSpecifiedError()
 
         field_names = {f.name for f in Model.meta.fields}
-        invalid_kwargs = {k: v for k, v in kwargs.items() if k not in field_names}
+        invalid_kwargs = {k: v for k, v in patch.items() if k not in field_names}
         if invalid_kwargs:
             raise InvalidKwargFieldSpecifiedError(Model, invalid_kwargs)
 
-        sql = generate_update_set_fields_sql(Model, frozenset(kwargs.keys()))
-        cur = self.query(Model, sql, {**kwargs, 'id': row_id})
-        result = cur.fetchone()
+        sql = generate_update_set_fields_sql(Model, frozenset(patch.keys()))
+
+        params: dict[str, Any] = {**patch}
+        where_clause, _ = compile_expr(target, params)
+        if where_clause:
+            sql += f" WHERE {where_clause}"
+
+        cur = self.query(Model, sql, params)
+        changes = self.connection.changes()
         cur.close()
-        if result is None:
-            raise NoRecordToUpdateError(f"Cannot UPDATE, no row with id={row_id} in table `{Model.__name__}`")
-        return result
+        return changes
 
-    @overload
-    def delete(self, Model: type[TableRow], row_id: int | None) -> None: ...
+    def delete(self, Model: type[TableRow], target: Any, /) -> int:
+        """Delete records matching the target expression."""
+        from .rel_compiler import compile_expr
 
-    @overload
-    def delete(self, row: TableRow) -> None: ...
+        if target is None:
+            return 0
 
-    def delete(self, Model_or_row: type[TableRow] | TableRow, row_id: int | None = None) -> None:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
-        if not isinstance(Model_or_row, type):
-            row = Model_or_row
-            Model = row.__class__
-            assert row_id is None, "Do not provide row_id when passing a row instance."
-            row_id = row.id
-        else:
-            Model = Model_or_row
-
-        if row_id is None:
-            raise IdNoneError("Cannot DELETE, id=None")
         query = generate_delete_sql(Model)
-        self.connection.execute(query, {'id': row_id})
-        if self.connection.changes() == 0:
-            raise NoRecordToDeleteError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
+
+        params: dict[str, Any] = {}
+        where_clause, _ = compile_expr(target, params)
+        if where_clause:
+            query += f" WHERE {where_clause}"
+
+        self.connection.execute(query, params)
+        return self.connection.changes()
 
 
 __all__ = [Engine, *__all_errors__]

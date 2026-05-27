@@ -280,8 +280,8 @@ class Migrate:
 
     def _get_table_sql(self, table_name: str) -> str | None:
         """Get CREATE TABLE sql from sqlite_master, or None if not exists."""
-        sm = self.engine.find_by(SqliteMaster, type="table", name=table_name)
-        return sm.sql if sm else None
+        rows = self.engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == table_name), limit=1)
+        return rows[0].sql if rows else None
 
     def _compute_table_schema(self, model: type[TableRow]) -> TableSchema:
         """Compute schema comparison for a single model."""
@@ -303,8 +303,8 @@ class Migrate:
     def _get_applied_migrations(self) -> dict[int, tuple[str, str]]:
         """Get applied migrations as {id: (filename, script)} from _migrations table."""
         self._ensure_migrations_table()
-        cur = self.engine.select(Migration)
-        return {row.id: (row.filename, row.script) for row in cur.fetchall()}  # type: ignore[dict-item-type]
+        rows = self.engine.select(Migration)
+        return {row.id: (row.filename, row.script) for row in rows}  # type: ignore[dict-item-type]
 
     def _get_ref_applied_migrations(self) -> dict[int, tuple[str, str]]:
         """Get applied migrations from the .ref DB as {id: (filename, script)}.
@@ -315,11 +315,11 @@ class Migrate:
             return {}
 
         ref_engine = Engine(str(self.ref_path))
-        if not ref_engine.find_by(SqliteMaster, type="table", name="_migrations"):
+        if not ref_engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "_migrations"), limit=1):
             return {}
 
-        cur = ref_engine.select(Migration)
-        return {row.id: (row.filename, row.script) for row in cur.fetchall()}  # type: ignore[dict-item-type]
+        rows = ref_engine.select(Migration)
+        return {row.id: (row.filename, row.script) for row in rows}  # type: ignore[dict-item-type]
 
     def _validate_migration_files(self, files: list[tuple[int, str, Path]]) -> list[str]:
         """Validate migration files in the migrations directory.
@@ -643,7 +643,7 @@ class Migrate:
                             finished_at=finished_at,
                             id=number,
                         )
-                        self.engine.save(migration, force_insert=True)
+                        self.engine.insert(migration)
                     return  # committed
                 except apsw.BusyError:
                     if attempt + 1 == retries:

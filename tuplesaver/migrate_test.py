@@ -148,7 +148,7 @@ def test_migrate__apply__executes_migration(migrate: Migrate):
     migrate.apply(result.pending[0])
 
     # Table should now exist
-    assert migrate.engine.find_by(SqliteMaster, type="table", name="User") is not None
+    assert migrate.engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "User"), limit=1)
 
 
 @pytest.mark.scenario("fresh_db_with_model")
@@ -160,7 +160,7 @@ def test_migrate__apply__records_in_migrations_table(migrate: Migrate):
     migrate.apply(result.pending[0])
 
     # Check _migrations table
-    row = migrate.engine.find(Migration, 1)
+    row = migrate.engine.find(Migration, Migration.Id(1))
     assert row.id == 1
     assert row.filename == "001.create_user.sql"
     assert "CREATE TABLE User" in row.script
@@ -212,10 +212,10 @@ def test_migrate__apply__rolls_back_on_bad_script(migrate: Migrate):
         migrate.apply(filename)
 
     # Table should NOT exist — the CREATE TABLE was rolled back
-    assert migrate.engine.find_by(SqliteMaster, type="table", name="User") is None
+    assert migrate.engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "User"), limit=1) == []
 
     # _migrations should have no record
-    assert migrate.engine.select(Migration).fetchall() == []
+    assert migrate.engine.select(Migration) == []
 
 
 @pytest.mark.scenario("fresh_db_with_model")
@@ -1244,7 +1244,7 @@ def test_migrate__declarative__apply_records_negative_ids_and_reapplies_on_chang
     result = migrate.check()
     assert result.state == State.CURRENT
 
-    rows = migrate.engine.select(Migration, filename="views_indexes_triggers/010.user_view.sql").fetchall()
+    rows = migrate.engine.select(Migration, Migration.filename == "views_indexes_triggers/010.user_view.sql")
     assert [r.id for r in rows] == [-1]
 
     path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n-- changed\n")
@@ -1254,7 +1254,7 @@ def test_migrate__declarative__apply_records_negative_ids_and_reapplies_on_chang
 
     migrate.apply("views_indexes_triggers/010.user_view.sql")
 
-    rows = migrate.engine.select(Migration, filename="views_indexes_triggers/010.user_view.sql").fetchall()
+    rows = migrate.engine.select(Migration, Migration.filename == "views_indexes_triggers/010.user_view.sql")
     rows.sort(key=lambda r: r.id)
     assert [r.id for r in rows] == [-2, -1]
     assert rows[0].script.endswith("-- changed\n")
@@ -1296,4 +1296,4 @@ def test_migrate__declarative__apply_rolls_back_on_bad_script(migrate: Migrate):
         migrate.apply("views_indexes_triggers/010.user_view.sql")
 
     # _migrations should have no record — the transaction was rolled back
-    assert migrate.engine.select(Migration).fetchall() == []
+    assert migrate.engine.select(Migration) == []

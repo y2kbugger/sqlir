@@ -18,7 +18,7 @@ class LazyMeta:
         return meta
 
 
-@dataclass_transform()
+@dataclass_transform(field_specifiers=(field,))
 class RowMeta(type):
     """Metaclass that transforms classes into frozen dataclasses."""
 
@@ -29,12 +29,43 @@ class RowMeta(type):
 
         # apply the dataclass decorator if not already applied
         if "__dataclass_fields__" not in new_cls.__dict__:
+            # Temporarily block __getattr__ from returning FieldExprs so dataclass
+            # doesn't mistake them for default values.
+            new_cls._is_dataclass_parsing = True
             new_cls = dataclass(new_cls)
+            new_cls._is_dataclass_parsing = False
 
         # Add lazy _meta descriptor, subclasses each get their own Meta instance, thats why we add it here.
         new_cls.meta = LazyMeta()  # type: ignore[attr-defined]
 
         return new_cls
+
+    def __getattr__(cls, name: str) -> Any:
+        if getattr(cls, "_is_dataclass_parsing", False):
+            raise AttributeError(name)
+
+        # Ignore special double-underscore attributes
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        from .rel import FieldExpr
+
+        return FieldExpr(name, cls)
+
+
+class TypedId[M](int):
+    """
+    A typed identifier that encapsulates the Model it belongs to.
+    """
+
+    _model: type[M]
+
+    def __new__(cls, value: int, model: type[M]):
+        obj = int.__new__(cls, value)
+        obj._model = model
+        return obj
+
+    def __repr__(self) -> str:
+        return f"{self._model.__name__}Id({int(self)})"
 
 
 class Row(metaclass=RowMeta):
@@ -42,7 +73,13 @@ class Row(metaclass=RowMeta):
 
 
 class TableRow(metaclass=RowMeta):
-    id: int | None = field(default=None, kw_only=True)
+    id: TypedId | int | None = field(default=None, kw_only=True)
+
+    @classmethod
+    def Id(cls, id_val: int) -> Any:
+        from .rel import FieldExpr
+
+        return FieldExpr("id", cls) == id_val
 
 
 class ModelDefinitionError(Exception):
@@ -104,21 +141,21 @@ class MetaField(NamedTuple):
 def make_model_meta(Model: type[TableRow]) -> Meta:
     annotations = _get_resolved_annotations(Model)
     fieldnames = Model.__dataclass_fields__.keys()
-    full_types = tuple(annotations.values())
+    full_types = tuple(_normalize_type_hint(t) for t in annotations.values())
     unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
 
     fields = tuple(
         MetaField(
             name=fieldname,
             type=FieldType,
-            full_type=annotations[fieldname],
+            full_type=full_type,
             nullable=nullable,
             is_fk=is_row_model(FieldType),
             is_pk=fieldname == "id",
             sql_typename=schematype(FieldType),
             sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
         )
-        for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types, strict=False)
+        for fieldname, full_type, (nullable, FieldType) in zip(fieldnames, full_types, unwrapped_types, strict=False)
     )
 
     table_name = getattr(Model, '__tablename__', None) or Model.__name__
@@ -186,7 +223,7 @@ def schematype(FieldType: type) -> str:
 
 def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
     if field_name == "id":
-        if not (FieldType is int and nullable):
+        if not (issubclass(FieldType, int) and nullable):
             raise FieldZeroIdMalformed(FieldType)
         return "id [INTEGER] PRIMARY KEY NOT NULL"
 
@@ -220,6 +257,8 @@ def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     - The underlying type if it is Optional, otherwise the original type.
     """
 
+    type_hint = _normalize_type_hint(type_hint)
+
     # Not any form of Union type
     if not (isinstance(type_hint, types.UnionType) or get_origin(type_hint) is Union):
         return False, type_hint
@@ -228,6 +267,7 @@ def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     optional = type(None) in args
 
     underlying_types = tuple(arg for arg in args if arg is not type(None))
+
     underlying_type = underlying_types[0]
     for t in underlying_types[1:]:
         underlying_type |= t
@@ -235,13 +275,32 @@ def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     return optional, underlying_type
 
 
+def _normalize_type_hint(type_hint: Any) -> Any:
+    if not (isinstance(type_hint, types.UnionType) or get_origin(type_hint) is Union):
+        return type_hint
+
+    args = get_args(type_hint)
+    if TypedId not in args or int not in args:
+        return type_hint
+
+    normalized_args = tuple(arg for arg in args if arg is not TypedId)
+    normalized_type = normalized_args[0]
+    for arg in normalized_args[1:]:
+        normalized_type |= arg
+    return normalized_type
+
+
 def _get_resolved_annotations(Model: Any) -> dict[str, Any]:
     """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack.
 
     Includes inherited annotations from base classes.
     """
-    globalns = getattr(inspect.getmodule(Model), "__dict__", {})
+    globalns = getattr(inspect.getmodule(Model), "__dict__", {}).copy()
     localns = {}
+
+    import tuplesaver.model
+
+    globalns['TypedId'] = tuplesaver.model.TypedId
 
     for frame in inspect.stack():
         localns.update(frame.frame.f_locals)

@@ -146,10 +146,10 @@ def test_lazy__lazymodel_and_model_different__are_not_equal() -> None:
 def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
-    team = engine.save(Team("Team A", 5))
-    person = engine.save(Person("Alice", team))
+    team = engine.insert(Team("Team A", 5))
+    person = engine.insert(Person("Alice", team))
 
-    found_person = engine.find(Person, person.id)
+    found_person = engine.find(Person, Person.Id(person.id))
 
     assert found_person == person  # equal despite not having relationship loaded
     # Access raw field value (before Lazy is unwrapped) via object.__getattribute__
@@ -163,11 +163,11 @@ def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
 def test_proxy__lazy_relations__equal_by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
-    team = engine.save(Team("Team A", 5))
-    person = engine.save(Person("Alice", team))
+    team = engine.insert(Team("Team A", 5))
+    person = engine.insert(Person("Alice", team))
 
-    found_person1 = engine.find(Person, person.id)
-    found_person2 = engine.find(Person, person.id)
+    found_person1 = engine.find(Person, Person.Id(person.id))
+    found_person2 = engine.find(Person, Person.Id(person.id))
 
     assert found_person1 == found_person2
     assert found_person2 == found_person1
@@ -180,9 +180,9 @@ def test_proxy__lazy_query__multiple_rows__doesnt_fail(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = engine.save(Team("Team A", 5))
-    person1 = engine.save(Person("Alice", team))
-    person2 = engine.save(Person("Bob", team))
+    team = engine.insert(Team("Team A", 5))
+    person1 = engine.insert(Person("Alice", team))
+    person2 = engine.insert(Person("Bob", team))
 
     rows = engine.query(Person, "SELECT * FROM Person;").fetchall()
 

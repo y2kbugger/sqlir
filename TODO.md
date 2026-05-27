@@ -1,5 +1,13 @@
 # WIP
-- find_by arbitraqt sql predicates, e.g. `engine.find_by(MyModel, f"{MyModel.name} = 'Bart'")`
+- UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
+- switch to python 3.14 and arbitrary  t string for predicates, e.g.
+    - `engine.select(Model, t"{Model.name} LIKE 'R%'")`
+    - t"""{ScheduleItem.version_datetime} = (
+        SELECT MAX(version_datetime) FROM ScheduleItem
+        WHERE version_type IN ('pre_autoschedule', 'published')
+    )"""
+- python 3.14 deprecates `from __future__ import annotations` and makes it the default, so we can use actual types in type hints instead of strings, e.g. `manager: Employee` instead of `manager: "Employee"`, but there are a few porting notes surrounding the reading of annotations.
+
 
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
@@ -17,6 +25,7 @@
 
 
 # Bugs
+- not all models in model browser have a runtime python type showing...why?
 - BE CERTAIN that sqlite range comparisons are going to work for how we store dates.
 - Switch to semi joins in sql query generator auto-joiner
     - otherwise, fanout happen. Add regression test for this.
@@ -68,20 +77,11 @@
   - Test types on select (both decorator and non)
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
 
-## API comparison docs
-- take
-- pluck
-- exists
-- insert many?
-
-
 # Next
 - interactive restore list too long. can you page restores or head results?
 - Ship example.ipynb or output with library
 - ai skill for library usage
 - Find a remove unused exceptions
-- Document which types msgspec handles (Enum, UUID, datetime, date, time, set, frozenset, list, dict, NamedTuple) vs. which it cannot (Path, Decimal, complex C-extension types)
-  - tests?, examples?
 - types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - support sql column defs with default values, e.g. `name: str = "default name"` and then have that be the default value for the column in the create table statement, and also have it be the default value for the field when creating a new instance of the model without specifying that field.
 
@@ -172,6 +172,8 @@
 
 
 # Later
+## Better query builder
+right now we always use correlated scaler subqueries for fanout prevention, but EXISTS style semi joins could be much more efficients. we could use EXISTS when we know it would be support and only fall back to subquery when it is not known.
 ## leverage tstring for query-ten avoid AST hacking
 ## JSONB format - probably a breaking change.....
 ## check for valid json on json fields
