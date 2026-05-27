@@ -13,7 +13,8 @@
 - https://rogerbinns.github.io/apsw/tips.html#query-patterns
 
 # Bugs
-- not all models in model browser have a runtime python type showing...why?
+- t"{MyModel.name} LIKE 'B%'" and MyModel.score < 1  compound relation fail
+- Where exists clause should start on its own line
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
 
 
