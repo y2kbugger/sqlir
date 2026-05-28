@@ -66,9 +66,6 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 
 ## Gotchas
 
-- **`RowMeta.__getattr__` returns `FieldExpr` for any unknown attr.** Typos
-  like `Model.namee` silently produce expressions instead of raising. When
-  diagnosing weird query bugs, suspect this first.
 - **Model compilation is deferred** until first access of `__tablename__` /
   `__fields__` / `__converter__` etc. Errors surface at first use, not
   at `class` definition.

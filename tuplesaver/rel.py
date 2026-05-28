@@ -42,14 +42,28 @@ class Expr:
 
 
 class FieldExpr(Expr):
-    def __init__(self, name: str, model: Any = None):
+    def __init__(self, name: str, model: Any = None, target_model: Any = None):
         self._name = name
-        self._model = model
+        self._model = model  # Root model where this field expression started (e.g. Employee for Employee.department.name)
+        self._target_model = target_model  # Final model in chain (e.g. Manager for Employee.department.manager) or None if the final field is not a FK to a TableRow
 
     def __getattr__(self, item: str) -> FieldExpr:
         if item.startswith("_"):
             raise AttributeError(item)
-        return FieldExpr(f"{self._name}.{item}", self._model)
+
+        target = self._target_model
+        if target is None:
+            raise AttributeError(
+                f"cannot access {item!r} on {self!r}: field type is not a foreign-key model",
+            )
+
+        fields_by_name = target.__fields_by_name__
+        if item not in fields_by_name:
+            raise AttributeError(f"{target.__name__!r} has no field {item!r}")
+
+        field = fields_by_name[item]
+        next_target = field.type if field.is_fk else None
+        return FieldExpr(f"{self._name}.{item}", self._model, target_model=next_target)
 
     def __repr__(self) -> str:
         prefix = f"{self._model.__name__}." if self._model else ""

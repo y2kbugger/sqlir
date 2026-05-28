@@ -118,9 +118,20 @@ class RowMeta(type):
         # Ignore special double-underscore attributes
         if name.startswith("__") and name.endswith("__"):
             raise AttributeError(name)
+
+        # Only return a FieldExpr for names that actually correspond to a
+        # declared field on the model. Otherwise typos like ``Model.namee``
+        # silently produce expressions instead of raising. ``__fields_by_name__``
+        # access triggers deferred compilation via ``__getattribute__``.
+        fields_by_name = cls.__fields_by_name__
+        if name not in fields_by_name:
+            raise AttributeError(f"{cls.__name__!r} has no field {name!r}")
+
         from .rel import FieldExpr
 
-        return FieldExpr(name, cls)
+        field = fields_by_name[name]
+        target_model = field.type if field.is_fk else None
+        return FieldExpr(name, cls, target_model=target_model)
 
     def _ensure_compiled(cls) -> None:
         if not cls._is_compiled:

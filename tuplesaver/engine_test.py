@@ -129,7 +129,7 @@ def test_find_by__fields_with_no_kwargs(engine: Engine) -> None:
 
 def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(apsw.SQLError):
+    with pytest.raises(AttributeError, match="doesnt_exist"):
         engine.find(Team, Team.doesnt_exist == "test")
 
 
@@ -180,7 +180,7 @@ def test_select__with_kwargs_no_match(engine: Engine) -> None:
 
 def test_select__invalid_kwargs(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(apsw.SQLError):
+    with pytest.raises(AttributeError, match="doesnt_exist"):
         engine.select(Team, Team.doesnt_exist == "test")
 
 
