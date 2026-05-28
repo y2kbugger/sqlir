@@ -35,12 +35,13 @@ repos:
       name: ty check
       entry: ty check
       language: system
-      files: ^backend/
+      types_or: [python, pyi, jupyter]
       fail_fast: true
 - repo: https://github.com/kynan/nbstripout
   rev: '0.8.2'
   hooks:
     -   id: nbstripout
+        fail_fast: true
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.9.17
   hooks:
