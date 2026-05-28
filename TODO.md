@@ -1,5 +1,4 @@
 # WIP
-- push all the sql gen happening in engine to sql.py
 - more deeply consider api signature of engine.query. does it do too much?
 - simplify engine.init to always just take a connection.
 - can we push lazy field making from cursor proxy to adaptconvert? I bet not since it needs to fuck with descriptors.. hmmm... idk

@@ -17,11 +17,12 @@ from .model import (
     is_tablerow_model,
 )
 from .sql import (
-    generate_create_table_ddl,
-    generate_delete_sql,
-    generate_insert_sql,
-    generate_select_sql,
-    generate_update_set_fields_sql,
+    build_create_table_sql,
+    build_delete_sql,
+    build_insert_sql,
+    build_select_sql,
+    build_sqlite_schema_query,
+    build_update_sql,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ class Engine:
         assert is_tablerow_model(Model), f"Model `{Model.__name__}` is not a valid table model."
         table_name = Model.__tablename__
 
-        ddl = generate_create_table_ddl(Model)
+        ddl = build_create_table_sql(Model)
 
         try:
             self.connection.execute(ddl)
@@ -111,7 +112,7 @@ class Engine:
 
                 def _get_sql_for_existing_table(table_name: str) -> str:
                     # TODO: is there a apsw method for this?
-                    query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+                    query = build_sqlite_schema_query(table_name)
                     cursor = self.connection.execute(query)
                     result = cursor.fetchone()
                     cursor.close()
@@ -132,19 +133,8 @@ class Engine:
     ##### Reading
     def find[R: Row | TableRow](self, Model: type[R], target: Any, /, *, order: str | None = None) -> R:
         """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found."""
-        from .rel_compiler import compile_expr
-
-        sql = generate_select_sql(Model)
         params: dict[str, Any] = {}
-
-        if target is not None:
-            where_clause, _ = compile_expr(target, params)
-            if where_clause:
-                sql += f" WHERE {where_clause}"
-
-        if order:
-            sql += f" ORDER BY {order}"
-        sql += " LIMIT 1"
+        sql = build_select_sql(Model, target, params, order=order, limit=1)
 
         cur = self.query(Model, sql, params)
         row = cur.fetchone()
@@ -159,22 +149,8 @@ class Engine:
 
         If target is missing, selects all rows.
         """
-        from .rel_compiler import compile_expr
-
-        sql = generate_select_sql(Model)
         params: dict[str, Any] = {}
-
-        if target is not None:
-            where_clause, _ = compile_expr(target, params)
-            if where_clause:
-                sql += f" WHERE {where_clause}"
-
-        if order:
-            sql += f" ORDER BY {order}"
-        if limit is not None:
-            sql += f" LIMIT {limit}"
-        if offset is not None:
-            sql += f" OFFSET {offset}"
+        sql = build_select_sql(Model, target, params, order=order, limit=limit, offset=offset)
 
         cur = self.query(Model, sql, params)
         res = cur.fetchall()
@@ -183,14 +159,8 @@ class Engine:
 
     def query[R: Row | TableRow](self, Model: type[R], sql_or_rel: Any = None, parameters: Sequence | dict | None = None) -> TypedCursorProxy[R]:
         if not isinstance(sql_or_rel, str):
-            from .rel_compiler import compile_expr
-
-            sql = generate_select_sql(Model)
             params: dict[str, Any] = {}
-            if sql_or_rel is not None:
-                where_clause, _ = compile_expr(sql_or_rel, params)
-                if where_clause:
-                    sql += f" WHERE {where_clause}"
+            sql = build_select_sql(Model, sql_or_rel, params)
             if parameters:
                 if isinstance(parameters, dict):
                     params.update(parameters)
@@ -219,7 +189,7 @@ class Engine:
                 raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
 
         Model = type(row)
-        insert = generate_insert_sql(Model)
+        insert = build_insert_sql(Model)
         cur = self.query(Model, insert, vars(row))
         result = cur.fetchone()
         cur.close()
@@ -228,8 +198,6 @@ class Engine:
 
     def update(self, Model: type[TableRow], target: Any, /, **patch: Any) -> int:
         """Update records matching the target expression."""
-        from .rel_compiler import compile_expr
-
         if target is None:
             return 0
 
@@ -241,12 +209,8 @@ class Engine:
         if invalid_kwargs:
             raise InvalidKwargFieldSpecifiedError(Model, invalid_kwargs)
 
-        sql = generate_update_set_fields_sql(Model, frozenset(patch.keys()))
-
         params: dict[str, Any] = {**patch}
-        where_clause, _ = compile_expr(target, params)
-        if where_clause:
-            sql += f" WHERE {where_clause}"
+        sql = build_update_sql(Model, target, params, frozenset(patch.keys()))
 
         cur = self.query(Model, sql, params)
         changes = self.connection.changes()
@@ -255,17 +219,11 @@ class Engine:
 
     def delete(self, Model: type[TableRow], target: Any, /) -> int:
         """Delete records matching the target expression."""
-        from .rel_compiler import compile_expr
-
         if target is None:
             return 0
 
-        query = generate_delete_sql(Model)
-
         params: dict[str, Any] = {}
-        where_clause, _ = compile_expr(target, params)
-        if where_clause:
-            query += f" WHERE {where_clause}"
+        query = build_delete_sql(Model, target, params)
 
         self.connection.execute(query, params)
         return self.connection.changes()

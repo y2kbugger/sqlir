@@ -12,7 +12,7 @@ import colors as clr
 
 from .engine import Engine
 from .model import Row, TableRow
-from .sql import generate_create_table_ddl
+from .sql import build_create_table_sql
 
 
 def _parse_migration_number(filename: str) -> int | None:
@@ -285,7 +285,7 @@ class Migrate:
         """Compute schema comparison for a single model."""
         table_name = model.__tablename__
         model_name = model.__name__
-        expected_sql = generate_create_table_ddl(model)
+        expected_sql = build_create_table_sql(model)
         actual_sql = self._get_table_sql(table_name)
         return TableSchema(
             table_name=table_name,

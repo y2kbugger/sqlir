@@ -22,17 +22,17 @@ many "obvious" features are in the *Never, Will not Implement* section.
 | File | Role |
 |------|------|
 | [model.py](tuplesaver/model.py) | `RowMeta` metaclass, `Row` / `TableRow`, deferred model compilation, schema-type inference |
-| [rel.py](tuplesaver/rel.py) | Relation AST: `FieldExpr`, `BinaryExpr`, `LogicalExpr` (produced by `Model.field == value` etc.) |
-| [rel_compiler.py](tuplesaver/rel_compiler.py) | Lowers `rel` AST + t-strings to SQL fragments (EXISTS semi-joins for FK traversal) |
-| [sql.py](tuplesaver/sql.py) | DDL / DML template generation |
-| [adaptconvert.py](tuplesaver/adaptconvert.py) | SQLite ↔ Python adaptation; msgspec fallback for non-native types |
-| [cursorproxy.py](tuplesaver/cursorproxy.py) | `AdaptingCursor` + per-model row materialization with `Lazy` FK proxies |
-| [lazy.py](tuplesaver/lazy.py) | `Lazy[M]` deferred FK loader |
 | [engine.py](tuplesaver/engine.py) | `Engine` CRUD API: `insert`, `find`, `select`, `update`, `delete`, `query` |
+| [adaptconvert.py](tuplesaver/adaptconvert.py) | SQLite ↔ Python adaptation; msgspec fallback for non-native types |
+| [lazy.py](tuplesaver/lazy.py) | `Lazy[M]` deferred FK loader |
+| [cursorproxy.py](tuplesaver/cursorproxy.py) | `AdaptingCursor` + per-model row materialization with `Lazy` FK proxies |
+| [rel.py](tuplesaver/rel.py) | Relation AST: `FieldExpr`, `BinaryExpr`, `LogicalExpr` (produced by `Model.field == value` etc.) |
+| [sql_rel.py](tuplesaver/sql_rel.py) | Lowers `rel` AST + t-strings to SQL fragments (EXISTS semi-joins for FK traversal) |
+| [sql.py](tuplesaver/sql.py) | Whole-statement SQL builders (CREATE/SELECT/INSERT/UPDATE/DELETE) |
 | [migrate.py](tuplesaver/migrate.py) | Migration state machine + apply/generate |
 | [migrate_cli.py](tuplesaver/migrate_cli.py) | `tuplesaver-migrate` CLI |
-| [conftest.py](tuplesaver/conftest.py) | Shared pytest fixtures (`engine`, `sql_log`, `benchmark`, `limit_stack_depth`) |
 | [migrate_scenarios/](tuplesaver/migrate_scenarios) | Per-scenario folders (`SCENARIO.md` + optional `m.py`) consumed by migrate tests |
+| [conftest.py](tuplesaver/conftest.py) | Shared pytest fixtures (`engine`, `sql_log`, `benchmark`, `limit_stack_depth`) |
 
 ## Commands
 
@@ -58,7 +58,7 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
   docstring on `RowMeta` in [model.py](tuplesaver/model.py).
 - **t-strings (PEP 750)** are used to embed model field references in raw
   SQL fragments, e.g. `t"{Athlete.team.name} = 'Red'"`. They are processed by
-  `rel_compiler.py`. Don't replace them with plain `f"..."`.
+  `sql_rel.py`. Don't replace them with plain `f"..."`.
 - **Benchmarks** are pytest-benchmark tests, disabled by default
   (`--benchmark-disable` in `addopts`). The `benchmark` fixture pins to CPU
   cores `{6, 7}` — this is intentional and host-specific; do not "fix" it.
