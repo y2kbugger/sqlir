@@ -1114,7 +1114,6 @@ name = "tuplesaver"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "ansicolors" },
     { name = "apsw" },
     { name = "msgspec" },
 ]
@@ -1128,6 +1127,7 @@ dev = [
     { name = "ty" },
 ]
 examplenotebook = [
+    { name = "ansicolors" },
     { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "networkx" },
@@ -1140,7 +1140,6 @@ profiling = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ansicolors", specifier = ">=1.1.8" },
     { name = "apsw", specifier = ">=3.51.1.0" },
     { name = "msgspec", specifier = ">=0.19.0" },
 ]
@@ -1154,6 +1153,7 @@ dev = [
     { name = "ty" },
 ]
 examplenotebook = [
+    { name = "ansicolors", specifier = ">=1.1.8" },
     { name = "ipykernel" },
     { name = "matplotlib", specifier = ">=3.10.3,<4" },
     { name = "networkx", specifier = "~=3.5" },
