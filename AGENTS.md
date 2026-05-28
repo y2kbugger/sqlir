@@ -2,7 +2,7 @@
 
 Notes for AI coding agents working in this repo. For project intent and end-user
 docs, see [README.md](README.md). For the evolving public API surface and
-design discussion, see [API2.md](API2.md). Open TODOs / non-goals live in
+design discussion, see [API.md](API.md). Open TODOs / non-goals live in
 [TODO.md](TODO.md) — **always re-check TODO.md before suggesting changes**;
 many "obvious" features are in the *Never, Will not Implement* section.
 
@@ -87,7 +87,7 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 
 ## When changing the public API
 
-- Update [API2.md](API2.md) and [TODO.md](TODO.md) in the same change when
+- Update [API.md](API.md) and [TODO.md](TODO.md) in the same change when
   semantics shift.
 - Prefer deletion over deprecation shims — this is a pre-1.0 library and the
   TODO is explicit about minimizing surface area.

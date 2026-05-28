@@ -1,5 +1,4 @@
 # WIP
-- harmonize api.md with new engine api and conventions
 - push all the sql gen happening in engine to sql.py
 - more deeply consider api signature of engine.query. does it do too much?
 - simplify engine.init to always just take a connection.
