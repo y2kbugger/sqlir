@@ -107,6 +107,16 @@ def test_compile_template_string_scalar_subquery():
     assert next_idx == 0
 
 
+def test_compile_template_string_model_splices_tablename():
+    expr = t"{Athlete.name} IN (SELECT name FROM {Athlete})"
+    params = {}
+    sql, next_idx = compile_expr(expr, params)
+
+    assert sql == "Athlete.name IN (SELECT name FROM Athlete)"
+    assert params == {}
+    assert next_idx == 0
+
+
 def test_compile_template_string_multi_step_scalar_subquery():
     expr = t"LOWER({Athlete.team.league.leaguename}) = 'big'"
     params = {}

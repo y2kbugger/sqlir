@@ -10,7 +10,7 @@ This module should only be used by `sql.py` and test code.
 from collections.abc import Iterator
 from typing import Any, cast
 
-from .model import TableRow
+from .model import RowMeta, TableRow
 from .rel import BinaryExpr, FieldExpr, LogicalExpr
 
 # ---------------------------------------------------------------------------
@@ -98,7 +98,9 @@ def _compile_tstring(expr: Any, params: dict[str, Any], param_idx: int) -> tuple
         if i >= len(expr.interpolations):
             continue
         val = expr.interpolations[i].value
-        if isinstance(val, FieldExpr) and val._model:  # noqa: SLF001
+        if isinstance(val, RowMeta):
+            sql_parts.append(val.__tablename__)
+        elif isinstance(val, FieldExpr) and val._model:  # noqa: SLF001
             sql_parts.append(_build_scalar_subquery(val._model, val._name))  # noqa: SLF001
         elif hasattr(val, "_name"):
             sql_parts.append(val._name)  # noqa: SLF001
