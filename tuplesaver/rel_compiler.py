@@ -1,57 +1,63 @@
+"""Compile rel.py expressions into SQL fragments.
+
+This module lowers the relational AST into WHERE-clause and scalar-subquery
+fragments. Whole-statement templates stay in sql.py.
+"""
+
 from typing import Any, cast
 
-from .model import Meta, TableRow
+from .model import TableRow
 from .rel import BinaryExpr, FieldExpr, LogicalExpr
 
 
 def _build_exists(BaseModel: type[TableRow], path: str, op: str, value_sql: str) -> str:
     parts = path.split('.')
     op = {"==": "="}.get(op, op)
+    base_table_name = BaseModel.__tablename__
 
     if len(parts) == 1:
-        return f"{BaseModel.meta.table_name}.{parts[0]} {op} {value_sql}"
+        return f"{base_table_name}.{parts[0]} {op} {value_sql}"
 
-    meta = BaseModel.meta
-    outer_alias = BaseModel.meta.table_name
+    outer_alias = base_table_name
 
-    def step(i: int, current_meta: Meta, current_alias: str, indent: str) -> str:
+    def step(i: int, current_model: type[TableRow], current_alias: str, indent: str) -> str:
         if i == len(parts) - 1:
             return f"{current_alias}.{parts[i]} {op} {value_sql}"
 
         attr = parts[i]
-        field = next(f for f in current_meta.fields if f.name == attr)
-        next_meta = cast(type[TableRow], field.type).meta
-        next_alias = f"{current_alias}_{attr}" if current_alias != BaseModel.meta.table_name else attr
+        field = current_model.__fields_by_name__[attr]
+        next_model = cast(type[TableRow], field.type)
+        next_alias = f"{current_alias}_{attr}" if current_alias != base_table_name else attr
 
-        inner = step(i + 1, next_meta, next_alias, indent + "    ")
+        inner = step(i + 1, next_model, next_alias, indent + "    ")
 
-        return f"EXISTS (\n{indent}    SELECT 1 FROM {next_meta.table_name} {next_alias}\n{indent}    WHERE {next_alias}.id = {current_alias}.{attr}\n{indent}    AND {inner}\n{indent})"
+        return f"EXISTS (\n{indent}    SELECT 1 FROM {next_model.__tablename__} {next_alias}\n{indent}    WHERE {next_alias}.id = {current_alias}.{attr}\n{indent}    AND {inner}\n{indent})"
 
-    return step(0, meta, outer_alias, "")
+    return step(0, BaseModel, outer_alias, "")
 
 
 def _build_scalar_subquery(BaseModel: type[TableRow], path: str) -> str:
     parts = path.split('.')
+    base_table_name = BaseModel.__tablename__
     if len(parts) == 1:
-        return f"{BaseModel.meta.table_name}.{parts[0]}"
+        return f"{base_table_name}.{parts[0]}"
 
-    meta = BaseModel.meta
-    outer_alias = BaseModel.meta.table_name
+    outer_alias = base_table_name
 
-    def step(i: int, current_meta: Meta, current_alias: str) -> str:
+    def step(i: int, current_model: type[TableRow], current_alias: str) -> str:
         if i == len(parts) - 1:
             return f"{current_alias}.{parts[i]}"
 
         attr = parts[i]
-        field = next(f for f in current_meta.fields if f.name == attr)
-        next_meta = cast(type[TableRow], field.type).meta
-        next_alias = f"{current_alias}_{attr}" if current_alias != BaseModel.meta.table_name else attr
+        field = current_model.__fields_by_name__[attr]
+        next_model = cast(type[TableRow], field.type)
+        next_alias = f"{current_alias}_{attr}" if current_alias != base_table_name else attr
 
-        inner = step(i + 1, next_meta, next_alias)
+        inner = step(i + 1, next_model, next_alias)
 
-        return f"(SELECT {inner} FROM {next_meta.table_name} {next_alias} WHERE {next_alias}.id = {current_alias}.{attr})"
+        return f"(SELECT {inner} FROM {next_model.__tablename__} {next_alias} WHERE {next_alias}.id = {current_alias}.{attr})"
 
-    return step(0, meta, outer_alias)
+    return step(0, BaseModel, outer_alias)
 
 
 def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple[str, int]:

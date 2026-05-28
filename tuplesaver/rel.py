@@ -1,3 +1,9 @@
+"""Relational expression AST.
+
+This module defines the user-facing expression objects built from model field
+access like ``Person.name == \"Alice\"``. It does not emit SQL text.
+"""
+
 from typing import Any
 
 

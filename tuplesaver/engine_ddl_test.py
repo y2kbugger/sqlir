@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import datetime as dt
 from dataclasses import fields
 from typing import Any

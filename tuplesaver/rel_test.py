@@ -16,7 +16,7 @@ def test_ast_generation():
     expr = Employee.name == "Alice"
     assert isinstance(expr, BinaryExpr)
     assert isinstance(expr.left, FieldExpr)
-    assert expr.left._name == "name"
+    assert expr.left._name == "name"  # noqa: SLF001
     assert expr.op == "=="
     assert expr.right == "Alice"
 
@@ -24,7 +24,7 @@ def test_ast_generation():
     expr2 = Employee.department.name == "HR"
     assert isinstance(expr2, BinaryExpr)
     assert isinstance(expr2.left, FieldExpr)
-    assert expr2.left._name == "department.name"
+    assert expr2.left._name == "department.name"  # noqa: SLF001
     assert expr2.op == "=="
 
     # Test logical combinations
@@ -39,6 +39,6 @@ def test_id_shortcut():
     expr = Employee.Id(42)
     assert isinstance(expr, BinaryExpr)
     assert isinstance(expr.left, FieldExpr)
-    assert expr.left._name == "id"
+    assert expr.left._name == "id"  # noqa: SLF001
     assert expr.op == "=="
     assert expr.right == 42

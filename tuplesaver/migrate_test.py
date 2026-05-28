@@ -10,8 +10,6 @@ Test Fixtures copy the scenario to a temp dir, then return a Migrate object.
 Use @pytest.mark.scenario("name") to pick the scenario.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import shutil
 import sys

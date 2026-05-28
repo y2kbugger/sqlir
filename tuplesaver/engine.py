@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 import re
@@ -9,7 +7,7 @@ from typing import Any
 
 import apsw
 
-from .adaptconvert import AdaptConvertCursor, adapt_value
+from .adaptconvert import AdaptingCursor, adapt_value
 from .cursorproxy import TypedCursorProxy
 
 # NOTE: engine.py should only know about .model, but not .query
@@ -53,7 +51,7 @@ class NoKwargFieldSpecifiedError(ValueError):
 
 class InvalidKwargFieldSpecifiedError(ValueError):
     def __init__(self, Model: type[TableRow], kwargs: dict[str, Any]) -> None:
-        super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in Model.meta.fields)}")
+        super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in Model.__fields__)}")
 
 
 class IdNoneError(ValueError):
@@ -95,19 +93,18 @@ class Engine:
             self.db_path = db_path
             self.connection: apsw.Connection = apsw.Connection(str(db_path))
 
-        self.connection.cursor_factory = AdaptConvertCursor
+        self.connection.cursor_factory = AdaptingCursor
 
     def ensure_table_created(self, Model: type[TableRow]) -> None:
         assert is_tablerow_model(Model), f"Model `{Model.__name__}` is not a valid table model."
-        meta = Model.meta
+        table_name = Model.__tablename__
 
         ddl = generate_create_table_ddl(Model)
 
         try:
             self.connection.execute(ddl)
         except apsw.SQLError as e:
-            assert meta.table_name is not None, "Table name must be defined for the model to create it."
-            if f"table {meta.table_name} already exists" in str(e):
+            if f"table {table_name} already exists" in str(e):
                 # Check existing table, it might be ok
                 def _normalize_whitespace(s: str) -> str:
                     return re.sub(r'\s+', ' ', s).strip()
@@ -121,11 +118,11 @@ class Engine:
                     assert result is not None, f"Table {table_name} not found in sqlite_master"
                     return result[0]
 
-                existing_table_schema = _normalize_whitespace(_get_sql_for_existing_table(meta.table_name))
+                existing_table_schema = _normalize_whitespace(_get_sql_for_existing_table(table_name))
                 new_table_schema = _normalize_whitespace(ddl)
 
                 if existing_table_schema != new_table_schema:
-                    raise TableSchemaMismatch(meta.table_name, existing_table_schema, new_table_schema) from e
+                    raise TableSchemaMismatch(table_name, existing_table_schema, new_table_schema) from e
             else:
                 # error is not about the table already existing
                 raise
@@ -136,11 +133,6 @@ class Engine:
     def find[R: Row | TableRow](self, Model: type[R], target: Any, /, *, order: str | None = None) -> R:
         """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found."""
         from .rel_compiler import compile_expr
-
-        meta = Model.meta
-
-        if meta.table_name is None:
-            raise LookupByAdHocModelImpossible(meta.model_name)
 
         sql = generate_select_sql(Model)
         params: dict[str, Any] = {}
@@ -168,11 +160,6 @@ class Engine:
         If target is missing, selects all rows.
         """
         from .rel_compiler import compile_expr
-
-        meta = Model.meta
-
-        if meta.table_name is None:
-            raise LookupByAdHocModelImpossible(meta.model_name)
 
         sql = generate_select_sql(Model)
         params: dict[str, Any] = {}
@@ -249,7 +236,7 @@ class Engine:
         if not patch:
             raise NoKwargFieldSpecifiedError()
 
-        field_names = {f.name for f in Model.meta.fields}
+        field_names = {f.name for f in Model.__fields__}
         invalid_kwargs = {k: v for k, v in patch.items() if k not in field_names}
         if invalid_kwargs:
             raise InvalidKwargFieldSpecifiedError(Model, invalid_kwargs)

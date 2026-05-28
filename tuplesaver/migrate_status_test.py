@@ -1,7 +1,5 @@
 """Tests for compact status output (status_lines + format_status)."""
 
-from __future__ import annotations
-
 import colors as clr
 
 from .migrate import CheckResult, TableSchema, format_status

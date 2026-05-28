@@ -1,18 +1,15 @@
 # WIP
+- expunge the concept of TypedId
+- push all the sql gen happening in engine to sql.py
+- more deeply consider api signature of engine.query. does it do too much?
+- simplify engine.init to always just take a connection.
+- can we push lazy field making from cursor proxy to adaptconvert? I bet not since it needs to fuck with descriptors.. hmmm... idk
 
 ## TableRow Model
-- backfill __tablename__ when it is missing, e.g. just use the class name, test this
-- Move lazy proxy descriptors to the metaclass
-- move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
-- Harmonize typing of type[Row] to RowMeta (i think)
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
-## APSW Integration
-- combine rowtrace for type converting types and lazy maker all together?
-- pragma user_version and pragma application_id for versioning and migrations
-- https://rogerbinns.github.io/apsw/tips.html#query-patterns
-
 # Bugs
+- Fields that doesn't even exist produce FieldExprs
 - t"{MyModel.name} LIKE 'B%'" and MyModel.score < 1  compound relation fail
 - Where exists clause should start on its own line
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
@@ -69,7 +66,7 @@
 - Find and remove unused exceptions
 - Ship example.ipynb or output with library
 - ai skill for library usage
-- python 3.14 deprecates `from __future__ import annotations` and makes it the default, so we can use actual types in type hints instead of strings, e.g. `manager: Employee` instead of `manager: "Employee"`, but there are a few porting notes surrounding the reading of annotations.
+- Python 3.14 lazy annotations are now the baseline. Keep model annotation handling simple and avoid re-introducing `from __future__ import annotations`.
 
 
 ## Backpop
@@ -191,6 +188,7 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
 - consider https://martinfowler.com/articles/evodb.html
 - Generate ALTER instead of DROP/CREATE
 - Generate SELECT-INTO for general alters
+- pragma user_version and pragma application_id for something?
 
 ## Connection Management and Concurrency
 - one connection per thread, like RoR AR
@@ -228,7 +226,7 @@ https://docs.datomic.com/datomic-overview.html
 Aggregations queries are more tightly coupled to Row model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
 just a stylistic choice
 
-To make annotations work, we force usage of `from __future__ import annotations`
+Use Python 3.14 lazy annotations directly here; do not rely on `from __future__ import annotations`.
 
 ```python
 class Person_TotalScore(NamedTuple):

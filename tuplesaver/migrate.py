@@ -1,7 +1,5 @@
 """SQLite schema migration management for TupleSaver models."""
 
-from __future__ import annotations
-
 import re
 import time
 from dataclasses import dataclass, field
@@ -285,8 +283,8 @@ class Migrate:
 
     def _compute_table_schema(self, model: type[TableRow]) -> TableSchema:
         """Compute schema comparison for a single model."""
-        table_name = model.meta.table_name
-        model_name = model.meta.model_name
+        table_name = model.__tablename__
+        model_name = model.__name__
         expected_sql = generate_create_table_ddl(model)
         actual_sql = self._get_table_sql(table_name)
         return TableSchema(
@@ -384,7 +382,9 @@ class Migrate:
 
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
-        schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
+        schema = {}
+        for model in self.models:
+            schema[model.__tablename__] = self._compute_table_schema(model)
 
         # Get migration files and applied migrations
         files = self._get_migration_files()

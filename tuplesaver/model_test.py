@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import datetime as dt
 from typing import NamedTuple, Optional, Union
 
@@ -7,8 +5,7 @@ import pytest
 
 from .model import (
     FieldZeroIdMalformed,
-    Meta,
-    MetaField,
+    ModelField,
     Row,
     TableRow,
     _sql_columndef,
@@ -175,23 +172,28 @@ def test_meta__model_missing_id() -> None:
         name: str
 
     # This should work fine - id is inherited
-    meta = TWithInheritedId.meta
-    assert meta.fields[0].name == "id"
+    assert TWithInheritedId.__fields__[0].name == "id"
 
 
 def test_meta__valid_table_model() -> None:
     class ModelA(TableRow):
         name: str
 
-    assert ModelA.meta == Meta(
-        Model=ModelA,
-        model_name="ModelA",
-        table_name="ModelA",
-        fields=(
-            MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
-            MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
-        ),
+    assert ModelA.__name__ == "ModelA"
+    assert ModelA.__tablename__ == "ModelA"
+    assert ModelA.__fields__ == (
+        ModelField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
+        ModelField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
     )
+
+
+def test_meta__default_tablename__tracks_renamed_class_until_first_compile() -> None:
+    class ModelA(TableRow):
+        name: str
+
+    ModelA.__name__ = "Renamed"
+
+    assert ModelA.__tablename__ == "Renamed"
 
 
 def test_meta__custom_tablename() -> None:
@@ -201,8 +203,8 @@ def test_meta__custom_tablename() -> None:
         __tablename__ = "custom_table"
         name: str
 
-    assert MyModel.meta.model_name == "MyModel"
-    assert MyModel.meta.table_name == "custom_table"
+    assert MyModel.__name__ == "MyModel"
+    assert MyModel.__tablename__ == "custom_table"
 
 
 def test_meta__custom_tablename__not_a_field() -> None:
@@ -212,7 +214,7 @@ def test_meta__custom_tablename__not_a_field() -> None:
         __tablename__ = "custom_table"
         name: str
 
-    field_names = [f.name for f in MyModel.meta.fields]
+    field_names = [f.name for f in MyModel.__fields__]
     assert "__tablename__" not in field_names
     assert field_names == ["id", "name"]
 
@@ -243,11 +245,11 @@ def test_table_meta___related_model() -> None:
         name: str
         unknown: A
 
-    _ = B.meta
+    _ = B.__fields__
 
 
 def test_table_meta__related_model_containing_class_declared_first() -> None:
-    """This works because we made M.meta a lazy lambda, which initializes only when first accessed."""
+    """This works because model compilation stays lazy until first real use."""
 
     class B(TableRow):
         name: str
@@ -256,7 +258,7 @@ def test_table_meta__related_model_containing_class_declared_first() -> None:
     class A(TableRow):
         name: str
 
-    _ = B.meta
+    assert B.__fields__[2].type is A
 
 
 def test_table_meta__related_model_recursive() -> None:
@@ -264,7 +266,7 @@ def test_table_meta__related_model_recursive() -> None:
         name: str
         a: A | None
 
-    _ = A.meta
+    _ = A.__fields__
 
 
 def test_table_meta__unregistered_field_type__doesnt_raise() -> None:
@@ -274,8 +276,7 @@ def test_table_meta__unregistered_field_type__doesnt_raise() -> None:
         name: str
         unknown: NewType
 
-    meta = ModelUnknownType.meta
-    assert meta.fields[2].sql_typename == "JSON_TEXT"
+    assert ModelUnknownType.__fields__[2].sql_typename == "JSON_TEXT"
 
 
 def test_meta__json_style_fields__preserve_full_type_and_use_jsontext_storage() -> None:
@@ -295,8 +296,7 @@ def test_meta__json_style_fields__preserve_full_type_and_use_jsontext_storage() 
         payload_item: JsonData
         payload_dataclasses: list[JsonData]
 
-    meta = TypedJsonModel.meta
-    by_name = {field.name: field for field in meta.fields}
+    by_name = {field.name: field for field in TypedJsonModel.__fields__}
 
     assert schematype(list) == "JSON_TEXT"
     assert schematype(dict) == "JSON_TEXT"

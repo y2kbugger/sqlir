@@ -1,17 +1,21 @@
-from __future__ import annotations
+"""Value adaptation and row conversion.
+
+This module owns SQLite <-> Python value conversion. It uses compiled model
+class attributes from model.py, but it does not decide statement shape or
+relationship traversal semantics.
+"""
 
 import datetime as dt
 import enum
 import logging
 import uuid
-from collections.abc import Callable
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 import apsw
 import msgspec
 
-from .model import RowMeta, is_tablerow_model, native_columntypes
+from .model import RowConverter, RowMeta, is_tablerow_model, native_columntypes
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +28,6 @@ def _is_unquoted_msgspec_type(t: type | Any) -> bool:
         return issubclass(t, (dt.datetime, dt.date, dt.time, Decimal, enum.Enum, uuid.UUID))
     except TypeError:
         return False
-
-
-_model_converters: dict[type, Callable[[apsw.SQLiteValues], tuple]] = {}
 
 
 def adapt_value(value: Any) -> apsw.SQLiteValue:
@@ -52,7 +53,7 @@ def adapt_value(value: Any) -> apsw.SQLiteValue:
     return msgspec.json.encode(value).decode('utf-8')
 
 
-def make_converter_for_model(Model: RowMeta) -> Callable[[apsw.SQLiteValues], tuple]:
+def make_converter_for_model(Model: RowMeta) -> RowConverter:
     """Build and cache an optimized row-converter for *Model*.
 
     Generates (via ``exec``) a tight converter function that maps a
@@ -61,11 +62,13 @@ def make_converter_for_model(Model: RowMeta) -> Callable[[apsw.SQLiteValues], tu
     type has no explicit converter are passed through if native, or decoded via msgspec.
     """
 
+    fields = Model.__fields__
+
     # -- build converter via exec -------------------------------------------
     ns: dict[str, Any] = {"msgspec": msgspec, "_dt": dt.datetime, "_date": dt.date, "_time": dt.time, "_Decimal": Decimal}
     parts: list[str] = []
 
-    for i, field in enumerate(Model.meta.fields):
+    for i, field in enumerate(fields):
         if field.type is bool:
             parts.append(f'bool(r[{i}]) if r[{i}] is not None else None')
             continue
@@ -105,26 +108,17 @@ def make_converter_for_model(Model: RowMeta) -> Callable[[apsw.SQLiteValues], tu
     func_code = f'def _convert(r):\n    return ({body},)'
     exec(func_code, ns)
 
-    converter_func = ns['_convert']
-    _model_converters[Model] = converter_func
+    converter_func = cast(RowConverter, ns['_convert'])
+    cast(Any, Model).__converter__ = converter_func
     return converter_func
 
 
-def get_model_converter(Model: RowMeta) -> Callable[[apsw.SQLiteValues], tuple]:
-    """Return the cached converter for *Model*, building one if needed."""
-    try:
-        return _model_converters[Model]
-    except KeyError:
-        return make_converter_for_model(Model)
+class AdaptingCursor(apsw.Cursor):
+    @staticmethod
+    def _adapt_binding(_: apsw.Cursor, __: int, value: Any) -> apsw.SQLiteValue:
+        # TODO: I think we could make this smarter by storing the adapters for a specific Model as a tuple and indexing into it, instead of calling adapt_value each time
+        return adapt_value(value)
 
-
-def _convert_binding(_: apsw.Cursor, __: int, value: Any) -> apsw.SQLiteValue:
-    # TODO: I think we could make this smarter by storing the adapters for a specific Model as a tuple and indexing into it, instead of calling adapt_value each time
-    # TODO: also could we put this as a def on the cursor class itself?
-    return adapt_value(value)
-
-
-class AdaptConvertCursor(apsw.Cursor):
     def __init__(self, connection: apsw.Connection):
         super().__init__(connection)
-        self.convert_binding = _convert_binding  # adapt callback
+        self.convert_binding = self._adapt_binding

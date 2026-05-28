@@ -1,34 +1,36 @@
-from __future__ import annotations
+"""Whole-statement SQL generation.
+
+This module owns SELECT/INSERT/UPDATE/DELETE/DDL templates built from compiled
+model class attributes. Predicate AST lowering stays in rel_compiler.py.
+"""
 
 from functools import cache, lru_cache
 from textwrap import dedent
 
 # NOTE: sql.py should only know about .model, but not .engine or .query
-from .model import Row, TableRow
+from .model import RowMeta, TableRow
 
 
 @cache
 def generate_create_table_ddl(Model: type[TableRow]) -> str:
     """Generate CREATE TABLE DDL statement for a table model."""
-    meta = Model.meta
-    assert meta.table_name is not None, "Table name must be defined for the model to create it."
-    ddl = dedent(f"""
-        CREATE TABLE {meta.table_name} (
-        {', '.join(f.sql_columndef for f in meta.fields)}
+    table_name = Model.__tablename__
+    fields = Model.__fields__
+    return dedent(f"""
+        CREATE TABLE {table_name} (
+        {', '.join(field.sql_columndef for field in fields)}
         )""").strip()
-
-    return ddl
 
 
 @cache
-def generate_select_sql[R: Row | TableRow](Model: type[R]) -> str:
-    meta = Model.meta
-    assert meta.table_name is not None, "Table name must be defined for the model"
-    return f"SELECT {', '.join(meta.table_name + '.' + f.name for f in meta.fields)} FROM {meta.table_name}"
+def generate_select_sql(Model: RowMeta) -> str:
+    table_name = Model.__tablename__
+    fields = Model.__fields__
+    return f"SELECT {', '.join(table_name + '.' + field.name for field in fields)} FROM {table_name}"
 
 
 @lru_cache(maxsize=256)
-def generate_select_by_field_sql[R: Row | TableRow](Model: type[R], field_names: frozenset[str]) -> str:
+def generate_select_by_field_sql(Model: RowMeta, field_names: frozenset[str]) -> str:
     select = generate_select_sql(Model)
     where_clause = " AND ".join(f"{field} = :{field}" for field in sorted(field_names))
     return dedent(f"""
@@ -39,44 +41,42 @@ def generate_select_by_field_sql[R: Row | TableRow](Model: type[R], field_names:
 
 @cache
 def generate_insert_sql(Model: type[TableRow]) -> str:
-    meta = Model.meta
-    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    table_name = Model.__tablename__
+    fields = Model.__fields__
     return dedent(f"""
-        INSERT INTO {meta.table_name} (
-            {', '.join(f.name for f in meta.fields)}
+        INSERT INTO {table_name} (
+            {', '.join(field.name for field in fields)}
         ) VALUES (
-            {', '.join(f":{f.name}" for f in meta.fields)}
+            {', '.join(f":{field.name}" for field in fields)}
         )
-        RETURNING {', '.join(f.name for f in meta.fields)}
+        RETURNING {', '.join(field.name for field in fields)}
         """).strip()
 
 
 @cache
 def generate_update_sql(Model: type[TableRow]) -> str:
-    meta = Model.meta
-    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    table_name = Model.__tablename__
+    fields = Model.__fields__
     return dedent(f"""
-        UPDATE {meta.table_name}
-        SET {', '.join(f"{f.name} = :{f.name}" for f in meta.fields)}
+        UPDATE {table_name}
+        SET {', '.join(f"{field.name} = :{field.name}" for field in fields)}
         WHERE id = :id
-        RETURNING {', '.join(f.name for f in meta.fields)}
+        RETURNING {', '.join(field.name for field in fields)}
         """).strip()
 
 
 @lru_cache(maxsize=256)
 def generate_update_set_fields_sql(Model: type[TableRow], field_names: frozenset[str]) -> str:
-    meta = Model.meta
-    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    table_name = Model.__tablename__
     return dedent(f"""
-        UPDATE {meta.table_name}
+        UPDATE {table_name}
         SET {', '.join(f"{name} = :{name}" for name in field_names)}
         """).strip()
 
 
 @cache
 def generate_delete_sql(Model: type[TableRow]) -> str:
-    meta = Model.meta
-    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    table_name = Model.__tablename__
     return dedent(f"""
-        DELETE FROM {meta.table_name}
+        DELETE FROM {table_name}
         """).strip()

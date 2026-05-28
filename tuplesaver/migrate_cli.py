@@ -1,7 +1,5 @@
 """CLI front end for TupleSaver migration system."""
 
-from __future__ import annotations
-
 import argparse
 import importlib
 import sys
@@ -158,7 +156,7 @@ def cmd_restore(migrate: Migrate, args: argparse.Namespace) -> int:
         _list_backups(migrate)
         try:
             choice = input("Select backup number (or 'q' to cancel): ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print("\nCancelled.")
             return 1
         if choice.lower() == "q":

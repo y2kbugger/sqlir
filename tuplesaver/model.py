@@ -1,44 +1,115 @@
-from __future__ import annotations
+"""Model declaration and compilation.
 
-import inspect
+This module owns model-class compilation and the class-level attributes derived
+from annotations. Other modules should consume the compiled class attributes it
+exposes rather than re-deriving model shape.
+"""
+
 import logging
 import types
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, NamedTuple, Union, dataclass_transform, get_args, get_origin, get_type_hints
+from typing import Any, NamedTuple, Union, cast, dataclass_transform, get_args, get_origin, get_type_hints
+
+import apsw
+
+from .lazy import Lazy
 
 logger = logging.getLogger(__name__)
 
 
-class LazyMeta:
-    """Descriptor that lazily creates and caches the Meta object on first access."""
+# Raw class attrs populated during compilation.
+_COMPILED_CACHE_ATTRS = frozenset(
+    {
+        "__tablename__",
+        "__fields__",
+        "__fields_by_name__",
+        "__lazy_relations__",
+        "__lazy_field_names__",
+        "__converter__",
+    }
+)
 
-    def __get__(self, obj: Any, cls: type[TableRow]):
-        meta = make_model_meta(cls)
-        cls.meta = meta
-        return meta
+# Type alias for the converter function type, which maps a raw SQLite row to Python Types
+type RowConverter = Callable[[apsw.SQLiteValues], tuple[Any, ...]]
+
+
+class ModelField(NamedTuple):
+    name: str
+    type: type
+    full_type: Any  # e.g. includes Optional
+    nullable: bool
+    is_fk: bool
+    is_pk: bool
+    sql_typename: str
+    sql_columndef: str
+
+
+def _uncompiled_rowconverter(_: apsw.SQLiteValues) -> tuple[Any, ...]:
+    raise AssertionError("Model converter accessed before model compilation")
 
 
 @dataclass_transform(field_specifiers=(field,))
 class RowMeta(type):
-    """Metaclass that transforms classes into frozen dataclasses."""
+    """Metaclass that transforms model classes into frozen dataclasses.
 
-    meta: ClassVar[Meta]
+    Typing rule:
+    - Use ``RowMeta`` for helpers that only need "a model class" and read
+      class-level cached state such as ``__tablename__``, ``__fields__``,
+      ``__converter__``, or cached SQL.
+    - Use ``type[R]`` only on generic APIs whose return type depends on the
+      specific model class that was passed in, such as ``Engine.find`` or
+      ``TypedCursorProxy.proxy_cursor_lazy``.
+
+        Compilation rule:
+        - We intentionally do not compile model metadata eagerly in ``__new__``.
+            A model can reference another model declared later in the same scope, so
+            type-hint resolution has to wait until first real use.
+        - To keep that deferred compile from leaking everywhere else, this
+            metaclass compiles on first access to any of the compiled cache
+            attrs (``__tablename__``, ``__fields__``, etc.).
+
+    This keeps internal helpers simple without giving up precise inference on
+    the public, type-propagating APIs.
+    """
+
+    __tablename__: str
+    __fields__: tuple[ModelField, ...]
+    __fields_by_name__: dict[str, ModelField]
+    __lazy_relations__: tuple[tuple[int, str, type[TableRow]], ...]
+    __lazy_field_names__: frozenset[str]
+    __converter__: RowConverter
+    _is_dataclass_parsing: bool
+    _tablename_is_default: bool
+    _is_compiled: bool
 
     def __new__(cls, typename: str, bases: tuple[type, ...], ns: dict[str, Any]) -> type:
-        new_cls = super().__new__(cls, typename, bases, ns)
+        model_cls = cast(RowMeta, super().__new__(cls, typename, bases, ns))
 
         # apply the dataclass decorator if not already applied
-        if "__dataclass_fields__" not in new_cls.__dict__:
+        if "__dataclass_fields__" not in model_cls.__dict__:
             # Temporarily block __getattr__ from returning FieldExprs so dataclass
             # doesn't mistake them for default values.
-            new_cls._is_dataclass_parsing = True  # ty:ignore[unresolved-attribute]
-            new_cls = dataclass(new_cls)
-            new_cls._is_dataclass_parsing = False  # noqa: SLF001
+            type.__setattr__(model_cls, "_is_dataclass_parsing", True)
+            model_cls = cast(RowMeta, dataclass(model_cls))
+            type.__setattr__(model_cls, "_is_dataclass_parsing", False)
 
-        # Add lazy _meta descriptor, subclasses each get their own Meta instance, thats why we add it here.
-        new_cls.meta = LazyMeta()  # ty:ignore[invalid-assignment]
+        model_cls.__tablename__ = ns.get("__tablename__", typename)
+        model_cls.__fields__ = ()
+        model_cls.__fields_by_name__ = {}
+        model_cls.__lazy_relations__ = ()
+        model_cls.__lazy_field_names__ = frozenset()
+        model_cls.__converter__ = _uncompiled_rowconverter
+        type.__setattr__(model_cls, "_tablename_is_default", "__tablename__" not in ns)
+        type.__setattr__(model_cls, "_is_compiled", False)
 
-        return new_cls
+        return model_cls
+
+    def __getattribute__(cls, name: str) -> Any:
+        if name in _COMPILED_CACHE_ATTRS:
+            cls._ensure_compiled()
+
+        return type.__getattribute__(cls, name)
 
     def __getattr__(cls, name: str) -> Any:
         if getattr(cls, "_is_dataclass_parsing", False):
@@ -50,6 +121,53 @@ class RowMeta(type):
         from .rel import FieldExpr
 
         return FieldExpr(name, cls)
+
+    def _ensure_compiled(cls) -> None:
+        if not cls._is_compiled:
+            cls._compile_model()
+
+    def _compile_model(cls) -> None:
+        annotations = _get_resolved_annotations(cls)
+        fieldnames = cls.__dataclass_fields__.keys()
+        full_types = tuple(_normalize_type_hint(t) for t in annotations.values())
+        unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
+
+        fields = tuple(
+            ModelField(
+                name=fieldname,
+                type=FieldType,
+                full_type=full_type,
+                nullable=nullable,
+                is_fk=is_tablerow_model(FieldType),
+                is_pk=fieldname == "id",
+                sql_typename=schematype(FieldType),
+                sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
+            )
+            for fieldname, full_type, (nullable, FieldType) in zip(fieldnames, full_types, unwrapped_types, strict=False)
+        )
+
+        table_name = _current_table_name(cls)
+
+        if "_" in cls.__name__:
+            raise InvalidTableName(cls.__name__)
+
+        lazy_relations = tuple((idx, field.name, cast(type[TableRow], field.type)) for idx, field in enumerate(fields) if field.is_fk)
+
+        cls.__tablename__ = table_name
+        cls.__fields__ = fields
+        cls.__fields_by_name__ = {field.name: field for field in fields}
+        cls.__lazy_relations__ = lazy_relations
+        cls.__lazy_field_names__ = frozenset(name for _, name, _ in lazy_relations)
+
+        type.__setattr__(cls, "_is_compiled", True)
+
+        from .adaptconvert import make_converter_for_model
+
+        try:
+            cls.__converter__ = make_converter_for_model(cls)
+        except Exception:
+            type.__setattr__(cls, "_is_compiled", False)
+            raise
 
 
 class TypedId[M](int):
@@ -74,6 +192,20 @@ class Row(metaclass=RowMeta):
 
 class TableRow(metaclass=RowMeta):
     id: TypedId | int | None = field(default=None, kw_only=True)
+
+    def __getattribute__(self, name: str, /) -> Any:
+        value = object.__getattribute__(self, name)
+
+        if name.startswith("__"):
+            return value
+
+        lazy_field_names = type(self).__lazy_field_names__
+        if name not in lazy_field_names:
+            return value
+
+        if isinstance(value, Lazy):
+            return value._obj()  # materialize & return real row  # noqa: SLF001
+        return value
 
     @classmethod
     def Id(cls, id_val: int | TypedId[Any] | None) -> Any:
@@ -123,70 +255,11 @@ def is_tablerow_model(cls: object) -> bool:
     return isinstance(cls, type) and issubclass(cls, TableRow)
 
 
-class Meta(NamedTuple):
-    Model: type[TableRow]
-    model_name: str
-    table_name: str
-    fields: tuple[MetaField, ...]
-
-
-class MetaField(NamedTuple):
-    name: str
-    type: type
-    full_type: Any  # e.g. includes Optional
-    nullable: bool
-    is_fk: bool
-    is_pk: bool
-    sql_typename: str
-    sql_columndef: str
-
-
-def make_model_meta(Model: type[TableRow]) -> Meta:
-    annotations = _get_resolved_annotations(Model)
-    fieldnames = Model.__dataclass_fields__.keys()
-    full_types = tuple(_normalize_type_hint(t) for t in annotations.values())
-    unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
-
-    fields = tuple(
-        MetaField(
-            name=fieldname,
-            type=FieldType,
-            full_type=full_type,
-            nullable=nullable,
-            is_fk=is_tablerow_model(FieldType),
-            is_pk=fieldname == "id",
-            sql_typename=schematype(FieldType),
-            sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
-        )
-        for fieldname, full_type, (nullable, FieldType) in zip(fieldnames, full_types, unwrapped_types, strict=False)
-    )
-
-    table_name = getattr(Model, '__tablename__', None) or Model.__name__
-
-    meta = Meta(
-        Model=Model,
-        model_name=Model.__name__,
-        table_name=table_name,
-        fields=fields,
-    )
-
-    ## Validate Meta
-
-    if "_" in meta.model_name:
-        raise InvalidTableName(meta.model_name)
-
-    # monkey-patch Model so any Lazy field is transparently unwrapped
-    from .cursorproxy import Lazy
-
-    def _unwrap_lazyproxy_getattr(self: Row, name: str, /) -> Any:
-        value = object.__getattribute__(self, name)
-        if isinstance(value, Lazy):
-            return value._obj()  # materialise & return real row  # noqa: SLF001
-        return value
-
-    Model.__getattribute__ = _unwrap_lazyproxy_getattr  # ty:ignore[invalid-assignment]
-
-    return meta
+def _current_table_name(Model: RowMeta) -> str:
+    class_dict = type.__getattribute__(Model, "__dict__")
+    if cast(bool, class_dict.get("_tablename_is_default", False)):
+        return Model.__name__
+    return cast(str, class_dict.get("__tablename__", Model.__name__))
 
 
 def schematype(FieldType: type) -> str:
@@ -239,7 +312,7 @@ def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
 
     # Add FK constraint for related models
     if is_tablerow_model(FieldType):
-        fk_table = getattr(FieldType, '__tablename__', None) or FieldType.__name__
+        fk_table = _current_table_name(cast(RowMeta, FieldType))
         fk_clause = f" REFERENCES {fk_table}(id)"
     else:
         fk_clause = ""
@@ -294,22 +367,13 @@ def _normalize_type_hint(type_hint: Any) -> Any:
 
 
 def _get_resolved_annotations(Model: Any) -> dict[str, Any]:
-    """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack.
+    """Resolve annotations for a model class.
 
-    Includes inherited annotations from base classes.
+    Python 3.14 already defers annotation evaluation, so by the time model
+    compilation runs we can ask ``get_type_hints()`` for the resolved values
+    directly.
     """
-    globalns = getattr(inspect.getmodule(Model), "__dict__", {}).copy()
-    localns = {}
-
-    import tuplesaver.model
-
-    globalns['TypedId'] = tuplesaver.model.TypedId
-
-    for frame in inspect.stack():
-        localns.update(frame.frame.f_locals)
-
-    # get_type_hints includes inherited annotations
-    hints = get_type_hints(Model, globalns=globalns, localns=localns, include_extras=True)
+    hints = get_type_hints(Model, include_extras=True)
 
     # Ensure ordering matches dataclass field order
     if hasattr(Model, "__dataclass_fields__"):
