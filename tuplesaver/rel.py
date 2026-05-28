@@ -7,8 +7,24 @@ access like ``Person.name == \"Alice\"``. It does not emit SQL text.
 from typing import Any
 
 
+class BooleanCoercionError(TypeError):
+    """Raised when a relational expression is used in a boolean context.
+
+    Python's ``and`` / ``or`` / ``not`` keywords short-circuit via ``__bool__``
+    and cannot be overloaded; use the bitwise ``&`` / ``|`` / ``~`` operators
+    to compose rel expressions instead.
+    """
+
+
 class Expr:
     __hash__ = object.__hash__
+
+    def __bool__(self) -> bool:
+        raise BooleanCoercionError(
+            f"Cannot evaluate {type(self).__name__} as bool. "
+            "Use `&` / `|` (bitwise) to combine rel expressions, not `and` / `or`. "
+            "Note: `t\"...\" and expr` silently drops the t-string because Templates are always truthy."
+        )
 
     def __eq__(self, other: Any) -> Expr:  # type: ignore[override, ty:invalid-method-override]
         return BinaryExpr(self, "==", other)

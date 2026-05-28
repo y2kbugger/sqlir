@@ -93,6 +93,23 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 ## Dev pratices
 - Always check `TODO.md` before suggesting changes. Many "obvious" features are
   already tracked as non-goals or future work.
+- Cross stuff of when you start it, not when you finish it. This helps track in-progress work and prevents
+  duplication.
 - Run tests, then `ty check`, then `ruff check --fix` in that order
     before moving on to the next step.
 - Always consider updating this file when making changes to codebase or docs OR when ever I as to code in a specific way.
+- Pick up on practices naturally as you work: when the user corrects your
+    approach, expresses a preference, or you discover a non-obvious convention,
+    record it in this file (AGENTS.md) without being asked. Treat each
+    correction as a candidate rule, not a one-off.
+- When the user interrupts mid-task to teach you a practice / record a note,
+    apply the note and then **resume the original task** in the same turn. Do not
+    stop and wait for re-prompting — the meta-instruction is a side quest, not a
+    replacement for the in-flight work. This is the developmental flywheel: learn by
+    doing, then codify the learning, then immediately apply it to the ongoing work.
+- For experimental probes / one-off reproductions (e.g. reproducing a bug,
+    poking at an API), create a `scratch.*.py` file at the repo root using the
+    edit tools and run it with `python scratch.<name>.py`. Do **not** cram
+    multi-line experiments into `python -c "..."` invocations — they are hard
+    to read, hard to iterate on, and hard for the user to follow. The
+    `scratch.*` prefix is gitignored / understood to be throwaway.

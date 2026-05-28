@@ -1,7 +1,7 @@
 import pytest
 
 from .model import TableRow
-from .rel import BinaryExpr, FieldExpr, LogicalExpr
+from .rel import BinaryExpr, BooleanCoercionError, FieldExpr, LogicalExpr
 
 
 class Employee(TableRow):
@@ -98,3 +98,16 @@ def test_chained_access_validates_against_fk_target_not_root():
 
     with pytest.raises(AttributeError, match=r"Child.*parent_only"):
         Parent.child.parent_only  # noqa: B018
+
+
+def test_bool_coercion_raises():
+    # Python's `and`/`or`/`not` short-circuit via __bool__ and cannot be
+    # overloaded. Raise loudly so users reach for `&` / `|` / `~` instead of
+    # silently building a wrong query.
+    expr = Employee.name == "Alice"
+    with pytest.raises(BooleanCoercionError, match="bitwise"):
+        bool(expr)
+    with pytest.raises(BooleanCoercionError):
+        _ = expr and (Employee.name == "Bob")
+    with pytest.raises(BooleanCoercionError):
+        _ = not expr
