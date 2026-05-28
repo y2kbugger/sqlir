@@ -129,7 +129,7 @@ class RowMeta(type):
     def _compile_model(cls) -> None:
         annotations = _get_resolved_annotations(cls)
         fieldnames = cls.__dataclass_fields__.keys()
-        full_types = tuple(_normalize_type_hint(t) for t in annotations.values())
+        full_types = tuple(annotations.values())
         unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
 
         fields = tuple(
@@ -170,28 +170,12 @@ class RowMeta(type):
             raise
 
 
-class TypedId[M](int):
-    """
-    A typed identifier that encapsulates the Model it belongs to.
-    """
-
-    _model: type[M]
-
-    def __new__(cls, value: int, model: type[M]):
-        self = int.__new__(cls, value)
-        self._model = model
-        return self
-
-    def __repr__(self) -> str:
-        return f"{self._model.__name__}Id({int(self)})"
-
-
 class Row(metaclass=RowMeta):
     pass
 
 
 class TableRow(metaclass=RowMeta):
-    id: TypedId | int | None = field(default=None, kw_only=True)
+    id: int | None = field(default=None, kw_only=True)
 
     def __getattribute__(self, name: str, /) -> Any:
         value = object.__getattribute__(self, name)
@@ -208,7 +192,7 @@ class TableRow(metaclass=RowMeta):
         return value
 
     @classmethod
-    def Id(cls, id_val: int | TypedId[Any] | None) -> Any:
+    def Id(cls, id_val: int | None) -> Any:
         from .rel import FieldExpr
 
         if id_val is None:
@@ -333,8 +317,6 @@ def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     - The underlying type if it is Optional, otherwise the original type.
     """
 
-    type_hint = _normalize_type_hint(type_hint)
-
     # Not any form of Union type
     if not (isinstance(type_hint, types.UnionType) or get_origin(type_hint) is Union):
         return False, type_hint
@@ -349,21 +331,6 @@ def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
         underlying_type |= t
 
     return optional, underlying_type
-
-
-def _normalize_type_hint(type_hint: Any) -> Any:
-    if not (isinstance(type_hint, types.UnionType) or get_origin(type_hint) is Union):
-        return type_hint
-
-    args = get_args(type_hint)
-    if TypedId not in args or int not in args:
-        return type_hint
-
-    normalized_args = tuple(arg for arg in args if arg is not TypedId)
-    normalized_type = normalized_args[0]
-    for arg in normalized_args[1:]:
-        normalized_type |= arg
-    return normalized_type
 
 
 def _get_resolved_annotations(Model: Any) -> dict[str, Any]:

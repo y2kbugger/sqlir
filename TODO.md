@@ -1,11 +1,9 @@
 # WIP
-- expunge the concept of TypedId
+- harmonize api.md with new engine api and conventions
 - push all the sql gen happening in engine to sql.py
 - more deeply consider api signature of engine.query. does it do too much?
 - simplify engine.init to always just take a connection.
 - can we push lazy field making from cursor proxy to adaptconvert? I bet not since it needs to fuck with descriptors.. hmmm... idk
-
-## TableRow Model
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
 # Bugs
@@ -469,6 +467,9 @@ cdef class CythonFieldDescriptor:
   - a pretty thin wrapper over native functionality
 
 # Never, Will not Implement
+- `TypedId` — a typed int subclass that encapsulated which Model an id belonged to
+  - The engine API always takes the Model explicitly, so the id alone never needs to carry that information
+  - Added complexity to model compilation (type-hint normalization) and to `TableRow.id` / `Model.Id` signatures for zero practical benefit
 - switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
   - Too much magic and increases boilerplate
   - CON to skipping: lose perfect "refactorability"
