@@ -1,4 +1,5 @@
 # Docs/Notes
+
 ## Types of Models
 - "table model" - Backed by a table in the database
 - "alt model" - Backed by a view in the database, but could have fields that are added (eventually), removed, or modified. Still have an id field that mapps to the original table.

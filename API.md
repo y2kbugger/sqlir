@@ -48,18 +48,25 @@ class Engine:
     def insert(self, row: M) -> M: ...
 
     def find(self, Model: type[M], target, /, *, order=None) -> M: ...
-    def select(self, Model: type[M], target=None, /, *, order=None, limit=None, offset=None) -> list[M]: ...
-    def query(self, Model: type[M], sql_or_rel=None, parameters=None) -> TypedCursorProxy[M]: ...
+    def select(self, Model: type[M], target=None, /, *, order=None, limit=None, offset=None) -> TypedCursorProxy[M]: ...
+    def query(self, Model: type[M], sql: str, parameters: Sequence | dict | None = None) -> TypedCursorProxy[M]: ...
 
     def update(self, Model: type[TableRow], target, /, **patch) -> int: ...
     def delete(self, Model: type[TableRow], target, /) -> int: ...
 ```
 
 - `find` raises `RecordNotFoundError` when nothing matches.
-- `select` returns `[]` when nothing matches; `target=None` selects all rows.
-- `query` accepts either a raw SQL string (+ optional `Sequence | dict`
-  parameters) or a relational expression (+ optional `dict` of extra params)
-  and returns a `TypedCursorProxy[M]` for streaming / fetchmany use.
+- `select` returns a `TypedCursorProxy[M]`. The cursor is **iterable** (yields
+  model instances) for streaming, and exposes the usual apsw methods
+  (`fetchone`, `fetchall`, `fetchmany`). `target=None` selects all rows.
+  ```python
+  for row in engine.select(Post, Post.score > 95.7):  # streams row-by-row
+      ...
+  rows = engine.select(Post).fetchall()               # materialize all
+  ```
+- `query` is the **raw-SQL escape hatch**: pass a SQL string (+ optional
+  `Sequence | dict` parameters) and get back a `TypedCursorProxy[M]`. For
+  model-relation filtering use `select` / `find`.
 - `update` / `delete` return the number of affected rows; `target=None`
   is a no-op (returns `0`).
 - `insert` is for `TableRow` only and returns the inserted row with `id`
@@ -90,7 +97,7 @@ class Engine:
 |   | Select all                             | `engine.select(Post)`                                               | `Post.all`                                                       |
 |   | Select by relation                     | `engine.select(Post, Post.name == "Hi")`                            | `Post.where(name: "Hi").all`                                     |
 |   | Select with order/limit/offset         | `engine.select(Post, ..., order="name", limit=10, offset=20)`       | `Post.where(...).order(...).limit(...).offset(...)`              |
-|   | Streaming cursor                       | `engine.query(Post, Post.name == "Hi")`                             | `Post.where(...).find_each`                                      |
+|   | Streaming cursor                       | `for r in engine.select(Post, Post.name == "Hi"): ...`              | `Post.where(...).find_each`                                      |
 |   | Raw SQL                                | `engine.query(Model, sql, params)`                                  | `Model.find_by_sql(sql)`                                         |
 |   | Aggregations                           | raw SQL / VIEW with `Row` models (views + migrate work well)        | `Model.group(...).sum(...)`                                      |
 | * | Exists                                 | —                                                                   | `Post.where(name: "Hi").exists?`                                 |

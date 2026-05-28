@@ -42,7 +42,7 @@ def test_select_on_table() -> None:
     # Check that without params, it's just selecting the table
     # Since we can't easily introspect the query from engine.select's public API without executing,
     # we'll just check that it runs
-    assert q == []
+    assert q.fetchall() == []
 
 
 def test_select_on_view_model() -> None:
@@ -52,7 +52,7 @@ def test_select_on_view_model() -> None:
     # We create a dummy view and select from it
     # Currently engine.select needs TableRow or Row with __tablename__
     query = engine.select(AthleteView)
-    assert query == []
+    assert query.fetchall() == []
 
 
 @pytest.mark.skip(reason="need backrefs to support this exists query")
@@ -85,7 +85,7 @@ def test_fanout_not_occur() -> None:
         engine.insert(player)
 
     # normal usage to check condition on related table
-    cur_semi = engine.query(Team, Team.athlete.number == 7)
+    cur_semi = engine.select(Team, Team.athlete.number == 7)
     # assert it generates the EXISTS implicitly via normal usage
     assert "EXISTS" in cur_semi.sql
 

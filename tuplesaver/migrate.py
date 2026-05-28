@@ -278,8 +278,8 @@ class Migrate:
 
     def _get_table_sql(self, table_name: str) -> str | None:
         """Get CREATE TABLE sql from sqlite_master, or None if not exists."""
-        rows = self.engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == table_name), limit=1)
-        return rows[0].sql if rows else None
+        row = self.engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == table_name), limit=1).fetchone()
+        return row.sql if row else None
 
     def _compute_table_schema(self, model: type[TableRow]) -> TableSchema:
         """Compute schema comparison for a single model."""
@@ -301,9 +301,8 @@ class Migrate:
     def _get_applied_migrations(self) -> dict[int, tuple[str, str]]:
         """Get applied migrations as {id: (filename, script)} from _migrations table."""
         self._ensure_migrations_table()
-        rows = self.engine.select(Migration)
         applied: dict[int, tuple[str, str]] = {}
-        for row in rows:
+        for row in self.engine.select(Migration):
             assert row.id is not None
             applied[int(row.id)] = (row.filename, row.script)
         return applied
@@ -317,12 +316,11 @@ class Migrate:
             return {}
 
         ref_engine = Engine(apsw.Connection(str(self.ref_path)))
-        if not ref_engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "_migrations"), limit=1):
+        if ref_engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "_migrations"), limit=1).fetchone() is None:
             return {}
 
-        rows = ref_engine.select(Migration)
         applied: dict[int, tuple[str, str]] = {}
-        for row in rows:
+        for row in ref_engine.select(Migration):
             assert row.id is not None
             applied[int(row.id)] = (row.filename, row.script)
         return applied

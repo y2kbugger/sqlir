@@ -3,6 +3,7 @@
 This module turns APSW rows into model instances.
 """
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, cast
 
 import apsw
@@ -24,6 +25,8 @@ class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
 
         def fetchone(self) -> R | None: ...
         def fetchall(self) -> list[R]: ...  # ty:ignore[invalid-method-override]
+        def __iter__(self) -> Iterator[R]: ...  # ty:ignore[invalid-method-override]
+        def __next__(self) -> R: ...
 
     @staticmethod
     def proxy_cursor_lazy(Model: type[R], cursor: apsw.Cursor, engine: Engine) -> TypedCursorProxy[R]:

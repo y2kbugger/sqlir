@@ -147,7 +147,7 @@ def test_select__returns_all_rows(engine: Engine) -> None:
     engine.insert(Team("Tigers", 33))
     engine.insert(Team("Bears", 25))
 
-    rows = engine.select(Team)
+    rows = engine.select(Team).fetchall()
 
     assert len(rows) == 3
     assert all(isinstance(r, Team) for r in rows)
@@ -162,7 +162,7 @@ def test_select__with_kwargs_filters(engine: Engine) -> None:
     engine.insert(Team("Tigers", 33))
     engine.insert(Team("Lions", 25))
 
-    rows = engine.select(Team, Team.name == "Lions")
+    rows = engine.select(Team, Team.name == "Lions").fetchall()
 
     assert len(rows) == 2
     assert rows[0] == Team("Lions", 30, id=1)
@@ -173,7 +173,7 @@ def test_select__with_kwargs_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.insert(Team("Lions", 30))
 
-    rows = engine.select(Team, Team.name == "Nobody")
+    rows = engine.select(Team, Team.name == "Nobody").fetchall()
 
     assert rows == []
 
@@ -185,10 +185,10 @@ def test_select__invalid_kwargs(engine: Engine) -> None:
 
 
 def test_select__adhoc_model(engine: Engine) -> None:
-    r = engine.select(SqliteMaster, SqliteMaster.type == 'table')
+    r = engine.select(SqliteMaster, SqliteMaster.type == 'table').fetchall()
     assert len(r) == 0
     engine.ensure_table_created(Team)
-    r = engine.select(SqliteMaster, SqliteMaster.type == 'table')
+    r = engine.select(SqliteMaster, SqliteMaster.type == 'table').fetchall()
     assert len(r) == 1
     assert any(row.name == 'Team' for row in r)
 

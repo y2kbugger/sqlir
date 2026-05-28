@@ -137,37 +137,27 @@ class Engine:
             raise RecordNotFoundError(Model.__name__, target)
         return row
 
-    def select[R: Row | TableRow](self, Model: type[R], target: Any = None, /, *, order: str | None = None, limit: int | None = None, offset: int | None = None) -> list[R]:
-        """Select rows by a relational expression, returning a list of rows.
+    def select[R: Row | TableRow](self, Model: type[R], target: Any = None, /, *, order: str | None = None, limit: int | None = None, offset: int | None = None) -> TypedCursorProxy[R]:
+        """Select rows by a relational expression, returning a typed cursor.
+
+        The cursor is iterable (yields model instances) and exposes the usual
+        apsw methods (`fetchone`, `fetchall`, `fetchmany`). Use it for
+        streaming with `for row in engine.select(...)` or materialize all rows
+        with `engine.select(...).fetchall()`.
 
         If target is missing, selects all rows.
         """
         params: dict[str, Any] = {}
         sql = build_select_sql(Model, target, params, order=order, limit=limit, offset=offset)
+        return self.query(Model, sql, params)
 
-        cur = self.query(Model, sql, params)
-        res = cur.fetchall()
-        cur.close()
-        return res
-
-    def query[R: Row | TableRow](self, Model: type[R], sql_or_rel: Any = None, parameters: Sequence | dict | None = None) -> TypedCursorProxy[R]:
-        if not isinstance(sql_or_rel, str):
-            params: dict[str, Any] = {}
-            sql = build_select_sql(Model, sql_or_rel, params)
-            if parameters:
-                if isinstance(parameters, dict):
-                    params.update(parameters)
-                else:
-                    raise ValueError("Can only use dict parameters when providing a relational expression")
-            parameters = params
-        else:
-            sql = sql_or_rel
-            if parameters is None:
-                parameters = tuple()
-
+    def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict | None = None) -> TypedCursorProxy[R]:
+        """Execute raw SQL and return a typed cursor for `Model`"""
+        if parameters is None:
+            parameters = ()
         if isinstance(parameters, dict):
             parameters = {k: adapt_value(v) if v is not None else None for k, v in parameters.items()}
-        elif parameters:
+        else:
             parameters = tuple(adapt_value(v) if v is not None else None for v in parameters)
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)

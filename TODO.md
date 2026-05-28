@@ -1,5 +1,4 @@
 # WIP
-- more deeply consider api signature of engine.query. does it do too much?
 - can we push lazy field making from cursor proxy to adaptconvert? I bet not since it needs to fuck with descriptors.. hmmm... idk
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
@@ -44,6 +43,7 @@
 - Test duplicate joins in query.select deduplicates
 - Benchmark and test connection creation and closing
 - benchmark model creation, field access, hashing, and memory footprint vs plain unpatched NamedTuple, and dataclass,
+    - maybe resurect some of the old benchmarks for this.
 - ensure that ID fields are always stored as integer affinity. i really think there are some landmines with tables having "text" in the the name. maybe all id columns should just be INT now that we do adapt/convert without relying on sql column types.
 - Can a modeul use dataclass feature like "field"? should we make a custom one?
 
@@ -151,6 +151,8 @@
 
 
 # Later
+- automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
+
 ## JSONB format - probably a breaking change.....so its soon or never
 Basically we would have to wrap all json fields in a sqlite function call that parses and stores the binary format.
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
