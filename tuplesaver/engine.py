@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from collections.abc import Sequence
 from dataclasses import fields
@@ -86,14 +85,8 @@ __all_errors__ = [
 
 
 class Engine:
-    def __init__(self, db_path: str | os.PathLike[str] | apsw.Connection) -> None:
-        if isinstance(db_path, apsw.Connection):
-            self.connection = db_path
-            self.db_path = self.connection.filename
-        else:
-            self.db_path = db_path
-            self.connection: apsw.Connection = apsw.Connection(str(db_path))
-
+    def __init__(self, connection: apsw.Connection) -> None:
+        self.connection = connection
         self.connection.cursor_factory = AdaptingCursor
 
     def ensure_table_created(self, Model: type[TableRow]) -> None:

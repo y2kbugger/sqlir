@@ -1,5 +1,6 @@
 from textwrap import dedent
 
+import apsw
 import pytest
 
 from tuplesaver.engine import Engine
@@ -31,7 +32,7 @@ def dd(sql: str) -> str:
 
 
 def test_select_on_table() -> None:
-    engine = Engine(":memory:")
+    engine = Engine(apsw.Connection(":memory:"))
     engine.ensure_table_created(League)
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Athlete)
@@ -45,7 +46,7 @@ def test_select_on_table() -> None:
 
 
 def test_select_on_view_model() -> None:
-    engine = Engine(":memory:")
+    engine = Engine(apsw.Connection(":memory:"))
     engine.ensure_table_created(Athlete)
 
     # We create a dummy view and select from it
@@ -56,7 +57,7 @@ def test_select_on_view_model() -> None:
 
 @pytest.mark.skip(reason="need backrefs to support this exists query")
 def test_fanout_not_occur() -> None:
-    engine = Engine(":memory:")
+    engine = Engine(apsw.Connection(":memory:"))
     engine.ensure_table_created(League)
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Athlete)

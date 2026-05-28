@@ -15,7 +15,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @pytest.fixture
 def engine() -> Iterable[Engine]:
-    engine = Engine(":memory:")
+    engine = Engine(apsw.Connection(":memory:"))
     yield engine
     engine.connection.close()
 

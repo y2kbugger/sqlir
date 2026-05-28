@@ -255,7 +255,7 @@ def _backup_with_retry(backup: apsw.Backup, *, retries: int = 8, delay: float = 
 class Migrate:
     def __init__(self, db_path: str | Path, models: list[type[TableRow]]) -> None:
         self.db_path = Path(db_path)
-        self.engine = Engine(str(self.db_path))
+        self.engine = Engine(apsw.Connection(str(self.db_path)))
         self.models = models
 
     def init_declarative(self) -> Path:
@@ -316,7 +316,7 @@ class Migrate:
         if not self.ref_path.exists():
             return {}
 
-        ref_engine = Engine(str(self.ref_path))
+        ref_engine = Engine(apsw.Connection(str(self.ref_path)))
         if not ref_engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "_migrations"), limit=1):
             return {}
 

@@ -67,7 +67,7 @@ def migrate(request: pytest.FixtureRequest, tmp_path: Path) -> Migrate:
 @pytest.mark.scenario("empty_db")
 def test_migrate__empty_db__engine_works(migrate: Migrate):
     """Engine is functional and db is in temp dir."""
-    db_path = Path(migrate.engine.db_path)
+    db_path = Path(migrate.db_path)
     assert db_path.stem == "db"
     assert db_path.suffix == ".sqlite"
     assert db_path.parent.name == "empty_db"

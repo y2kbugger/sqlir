@@ -1,6 +1,5 @@
 # WIP
 - more deeply consider api signature of engine.query. does it do too much?
-- simplify engine.init to always just take a connection.
 - can we push lazy field making from cursor proxy to adaptconvert? I bet not since it needs to fuck with descriptors.. hmmm... idk
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
