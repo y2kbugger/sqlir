@@ -613,3 +613,49 @@ plt.show()
 
 # %%
 Team.__fields__ # just one of a handfule of attrs defined on the model class, populated during compilation.
+
+# %% [markdown]
+# # Anti-Patterns
+# and fixes
+
+# %% [markdown]
+# ## Embedding values via t-string closure
+#
+# A common mistake is wrapping a t-string in a function so values are captured at call time:
+#
+# ```python
+# def band_with_instrument(name: str, instrument: str):
+#     return t"{Band.name} = {name} AND EXISTS (SELECT 1 FROM BandMember WHERE BandMember.band = Band.id AND BandMember.instrument = {instrument})"
+#
+# band = engine.find(Band, band_with_instrument("Devo", "Keyboards"))
+# ```
+#
+# This creates a **brand-new t-string on every call**, embedding the Python values directly into the interpolation sequence. The predicate is opaque to callers — parameters are hidden inside the function body and cannot be overridden.
+
+# %%
+# Anti-pattern: a new t-string is constructed on every call.
+def band_with_instrument_antipattern(instrument: str):
+    return t"EXISTS (SELECT 1 FROM BandMember WHERE BandMember.band = Band.id AND BandMember.instrument = {instrument})"
+
+band = engine.find(Band, band_with_instrument_antipattern("Keyboards"))
+band
+
+# %% [markdown]
+# **Recommended:** declare the t-string once with raw SQLite named placeholders (`:name`, `:instrument`). The predicate is defined once at module level; values are passed explicitly via the `params` dict at each call site.
+#
+# ```python
+# band_with_instrument = t"{Band.name} = :name AND EXISTS (SELECT 1 FROM BandMember WHERE BandMember.band = Band.id AND BandMember.instrument = :instrument)"
+#
+# band = engine.find(Band, band_with_instrument, {"name": "Devo", "instrument": "Keyboards"})
+# ```
+#
+# Note: this predicate uses a correlated `EXISTS` subquery that checks for members by instrument — something that can't be expressed with field expressions alone since `Band` has no backref to `BandMember`.
+
+# %%
+# Recommended: one t-string declared once, params passed explicitly each time.
+band_with_instrument = t"EXISTS (SELECT 1 FROM BandMember WHERE BandMember.band = Band.id AND BandMember.instrument = :instrument)"
+
+band = engine.find(Band, band_with_instrument, {"instrument": "Keyboards"})
+band
+
+# %%
