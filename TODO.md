@@ -1,15 +1,24 @@
+# WIP
+
 # Bugs
+- fields with = None defaults return their default value at class
+level (not a FieldExpr), so they can't be used in relation/t-string column
+references. Let me see how _compile_tstring handles literal column names, and
+view the ScheduleItem definition.
+  A TableRow's pk id is None at class level, so Model.id == x silently becomes
+False (=id = 0). Fixed pk lookups to pass a bare int (engine.select(Model,
+item_id)). View (Row) models still use View.field == x.
 - Where exists clause should start on its own line
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
 
 
 # Testing
+- e.find without target predicate specified. allow/disallow?
 - Test delete by id (no match) and update id (no match)?
 - Test that basic engine crud operation emit only the expected statements, e.g. no select before update, etc. DO FOR ALL Engine OPERATIONS
 - test `Any` type on Row/TableRow models. Ban? Allow?
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
-- relax eager enforcement of FK Models being registered
-    - Test case for this
+- test that you can register a model with an FK that doesn exitst yet. Also test failure to actually evetually define it
 - Test case that you cannot subclass a tablemodel, e.g.
     ```python
     class BaseModel(TableRow):
@@ -18,6 +27,7 @@
     class SubModel(BaseModel):  # should raise
         boogie: int
     ```
+- test types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
 - test is_registered_fieldtype
@@ -47,16 +57,19 @@
 - use the assert_type from typing to check type hints
   - Test types on engine.find/select
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
+- automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
 
 # Next
 - UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
 - make rel template strings easily print as their resolved SQL for debugging
-- types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - interactive restore list too long. can you page restores or head results?
 - Find and remove unused exceptions
-- Ship example.ipynb or output with library
 - ai skill for library usage
-- Python 3.14 lazy annotations are now the baseline. Keep model annotation handling simple and avoid re-introducing `from __future__ import annotations`.
+- Allow order on find?
+ - row = e.select(ImportMeta, order="imported_at DESC", limit=1).fetchone()
+- consider that the param overloading was a mistake. because if you are going to define a resuable query you won't want to put it variable in module scope, but then if you put it in a def, you might as just reuse the def itself to override different param values.
+  maybe there is another convention for defining "required params" in t string? i like not hiding queries behind callables because other messes can come out of that. on the other hand it adds flexibility.
+
 
 
 ## Backpop
@@ -137,8 +150,12 @@
 
 
 # Later
-- automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
+- Got through and orginize/simplify/deduple/sort and groom the rest of this backlog
 - harmonize name rel, relation, pred and predicate
+- exprs in update values???
+- template string support for full queries, not just predicates? e.g. t'{MyModel:SELECT_FROM} WHERE {MyModel.field} = 1'
+    - what about plucky or aggregation queries?
+    - how to specify types when getting plucky. righ now this is all solved by just making a Row model. JUST forcing make a model leaves LESS things to remember. this seems like a will not implement.
 
 ## JSONB format - probably a breaking change.....so its soon or never
 Basically we would have to wrap all json fields in a sqlite function call that parses and stores the binary format.

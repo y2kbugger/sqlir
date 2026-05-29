@@ -48,6 +48,9 @@ Two reference files are bundled alongside this skill. Read them on demand:
   (`t"{User.name} LIKE 'J%'"`), not plain f-strings, so they stay
   refactor-safe.
 
+## sqlir is UNDER ACTIVE DEVELOPMENT
+- Please, summarize quirks/bugs that you had to work around after finishing your task, and share them with the maintainers.
+
 > These two files are auto-generated copies kept in sync with the repo's
 > `API.md` and `example.ipynb` by `scripts/sync_plugin.py` (run via a
 > pre-commit hook). Do not edit them by hand.
