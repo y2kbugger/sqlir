@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import apsw
 import apsw.unicode
 
-from tuplesaver.model import TableRow
+from sqlir.model import TableRow
 
 from .lazy import Lazy
 from .model import Row, RowConverter, is_tablerow_model

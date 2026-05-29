@@ -1,14 +1,14 @@
-# Tuple Saver
-Tuple Saver persists and retrieves python `NamedTuple`s to SQLite3.
+# sqlir
+sqlir persists and retrieves immutable dataclass-style models to SQLite3.
 
 ## Quick Start
 Add the library with uv:
 
-  uv add git+https://github.com/y2kbugger/tuplesaver.git
+  uv add git+https://github.com/y2kbugger/sqlir.git
 
 or if you manage your environment another way, use pip:
 
-    pip install git+https://github.com/y2kbugger/tuplesaver.git
+    pip install git+https://github.com/y2kbugger/sqlir.git
 
 
 See the `example.ipynb` notebook for usage examples.

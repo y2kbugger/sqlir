@@ -1,4 +1,4 @@
-"""SQLite schema migration management for TupleSaver models."""
+"""SQLite schema migration management for sqlir models."""
 
 import re
 import time

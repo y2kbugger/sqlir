@@ -3,8 +3,8 @@ from textwrap import dedent
 import apsw
 import pytest
 
-from tuplesaver.engine import Engine
-from tuplesaver.model import Row, TableRow
+from sqlir.engine import Engine
+from sqlir.model import Row, TableRow
 
 
 class League(TableRow):

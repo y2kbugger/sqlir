@@ -1,6 +1,3 @@
-# WIP
-- convert readme and docs and package name away from tuplesaver now that we don't save tuples
-
 # Bugs
 - Where exists clause should start on its own line
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
@@ -40,7 +37,7 @@
 - Validate in Meta creation that related models in fields of table models are actually table models and not alt/adhoc models
 - Test duplicate joins in query.select deduplicates
 - Benchmark and test connection creation and closing
-- benchmark model creation, field access, hashing, and memory footprint vs plain unpatched NamedTuple, and dataclass,
+- benchmark model creation, field access, hashing, and memory footprint vs plain NamedTuple and dataclass baselines,
     - maybe resurect some of the old benchmarks for this.
 - ensure that ID fields are always stored as integer affinity. i really think there are some landmines with tables having "text" in the the name. maybe all id columns should just be INT now that we do adapt/convert without relying on sql column types.
 - Can a modeul use dataclass feature like "field"? should we make a custom one?
@@ -68,13 +65,11 @@
 - set[M] vs list[M] vs BackPop[M] as typehint?
 - backpop
   ```python
-  class Team(NamedTuple):
-      id: int | None
+  class Team(TableRow):
       name: str
       teams: list[Person] # Backpop
 
-  class Person(NamedTuple):
-      id: int | None
+  class Person(TableRow):
       name: str
       team: Team # Forward
   ```
@@ -85,28 +80,24 @@
   - not FK is allowed to be a subset of another FK on the same model. `AmbiguousForwardReferenceError`
   ```python
   # Ex 1. disambiguating backpop
-  class Team(NamedTuple):
-      id: int | None
+  class Team(TableRow):
       name: str
       primary_teams: list[Person]
       secondary_teams: list[Person]
 
-  class Person(NamedTuple):
-      id: int | None
+  class Person(TableRow):
       name: str
       primary_team: Team
       secondary_team: Team
 
   # Ex 2. disambiguating backpop
-  class Employee(NamedTuple):
-      id: int | None
+  class Employee(TableRow):
       name: str
       manager_of: List[Project]
       lead_developer_of: List[Project]
       lead_maintainer_of: List[Project]
 
-  class Project(NamedTuple):
-      id: int | None
+  class Project(TableRow):
       name: str
       manager: Employee
       lead_developer: Employee
@@ -116,33 +107,29 @@
 
   - Backpop without a forward reference, should just be `AmbiguousBackpopError` because it is ambiguous if you cannot find a forward reference that is a complete prefixed subset of the backpop name.
     ```python
-    class Team(NamedTuple):
-        id: int | None
+    class Team(TableRow):
         name: str
         teams: list[Person]
-    class Person(NamedTuple):
-        id: int | None
+    class Person(TableRow):
         name: str
     ```
   - Many-to-Many shall just fall out of two 1:1, is not really a concept
   - Here is a test case with complex relations
   try and figure out if this is ambiguous or not
   ```python
-  class Employee(NamedTuple):
-      id: int | None
+  class Employee(TableRow):
       name: str
       manager_of: List[Project]
       lead_developer_of: List[Project]
       contributor_roles: List[ProjectEmployee]
 
-  class Project(NamedTuple):
-      id: int | None
+  class Project(TableRow):
       name: str
       manager: Employee
       lead_developer: Employee
       contributors: List[ProjectEmployee]
 
-  class ProjectEmployee(NamedTuple):
+  class ProjectEmployee(TableRow):
       project: Project
       employee: Employee
       role: str
@@ -225,7 +212,7 @@ just a stylistic choice
 Use Python 3.14 lazy annotations directly here; do not rely on `from __future__ import annotations`.
 
 ```python
-class Person_TotalScore(NamedTuple):
+class Person_TotalScore(Row):
     name: str
     total_score: Annotated[int, f"sum({Person.score})"]
 
@@ -238,7 +225,7 @@ def apple_total()
 engine.query(*apple_total)
 
 # or in the nested style, to communicate coupling
-class Person_TotalScore(NamedTuple):
+class Person_TotalScore(Row):
     name: str
     total_score: Annotated[int, f"sum({Person.score})"]
 
@@ -292,8 +279,7 @@ on conflict
 
 This is the user code
 ```python
-class XXX(NamedTuple):
-    id: int | None
+class XXX(TableRow):
     name: str
     place: str
     value: int
@@ -311,7 +297,7 @@ engine.upsert(XXX(name='a', place='c', value=888))
 ## Row model `SELECT`ing from multiple tables, e.g. ror's `pluck`
 
 ```python
-class Athlete_WithTeamName(NamedTuple):
+class Athlete_WithTeamName(Row):
     name: str
     team_name: Annotated[str, f"{Athlete.team.name}"]
 
@@ -327,7 +313,7 @@ JOIN Team team ON Athlete.team = team.id
 This kind of thing is already supported effortlessly in select style predicates.
 This might come for free with aggregations.
 ```python
-class Character_WithSpell(NamedTuple):
+class Character_WithSpell(Row):
     id: int
     name: str
     spell: Annotated[str, f"{Character.stats} -> '$.spell'"]
@@ -343,7 +329,7 @@ FROM Character
 Could be one or more queries for one model. Could have parameters. could want to
 reuse by adding where, or somethiing else??
 ```python
-class TableInfo(NamedTuple):
+class TableInfo(Row):
     cid: int
     name: str
     type: str
@@ -393,12 +379,12 @@ This would be like relations in RoR AR
 I believe a nontable model can reference another one.
 This seems in theory possible, but might have impossible edge cases
 ```python
-class Character_WithPowerColumn(NamedTuple):
+class Character_WithPowerColumn(Row):
     id: int
     name: str
     power: Annotated[str, f"{Character.stats} -> '$.power'"]
 
-class Character_TotalPower(NamedTuple):
+class Character_TotalPower(Row):
     id: int
     name: str
     total_power: Annotated[str, f"sum{Character_WithPowerColumn.power}"]
@@ -419,8 +405,6 @@ GROUP BY name
 Cython implementation of FieldDescriptor for better performance
 `field_descriptor.pyx`
 ``` python
-from typing import NamedTuple
-
 cdef class Column:
     """Fast Column class using Cython"""
     cdef public str name

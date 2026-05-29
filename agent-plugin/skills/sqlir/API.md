@@ -86,7 +86,7 @@ class Engine:
 
 ## API Comparison
 
-|   | Feature                                | TupleSaver                                                          | Rails ActiveRecord                                               |
+|   | Feature                                | sqlir                                                          | Rails ActiveRecord                                               |
 |:--|:---------------------------------------|:--------------------------------------------------------------------|:-----------------------------------------------------------------|
 |   | **Model Definition**                   |                                                                     |                                                                  |
 |   | Model class                            | `class Post(TableRow): ...`                                         | `class Post < ApplicationRecord`                                 |
@@ -131,7 +131,7 @@ class Engine:
 |   |                                        |                                                                     |                                                                  |
 |   | **Schema Management**                  |                                                                     |                                                                  |
 |   | Adhoc Table creation                   | `engine.ensure_table_created(Model)`                                | Rails migrations                                                 |
-|   | Migrations                             | `tuplesaver-migrate` CLI + Python API                               | `rails generate migration`                                       |
+|   | Migrations                             | `sqlir-migrate` CLI + Python API                               | `rails generate migration`                                       |
 |   | Foreign key constraints                | auto-generated from `Model \| None` FK fields                       | manual in migrations                                             |
 |   |                                        |                                                                     |                                                                  |
 |   | **Connection Management**              |                                                                     |                                                                  |
@@ -175,7 +175,7 @@ SQLite has only five native storage types
 | str    | TEXT    |
 | bytes  | BLOB    |
 
-On top of those, TupleSaver handles the following types automatically:
+On top of those, sqlir handles the following types automatically:
 
 | Python                                           | SQLite Schema Type     | Mechanism                                            |
 |:-------------------------------------------------|:-----------------------|:-----------------------------------------------------|
@@ -224,7 +224,7 @@ following Ruby on Rails semantics. This makes it easy to convert to HTTP 404
 responses in web frameworks:
 
 ```python
-from tuplesaver.engine import Engine, RecordNotFoundError
+from sqlir.engine import Engine, RecordNotFoundError
 
 # Flask example
 @app.errorhandler(RecordNotFoundError)
@@ -302,7 +302,7 @@ versa.
 
 ### CLI
 
-Entry point: `tuplesaver-migrate` (or `python -m tuplesaver.migrate_cli`)
+Entry point: `sqlir-migrate` (or `python -m sqlir.migrate_cli`)
 
 Global flags (required, with `pyproject.toml` fallback):
 
@@ -314,7 +314,7 @@ Global flags (required, with `pyproject.toml` fallback):
 Set permanently in `./pyproject.toml`:
 
 ```toml
-[tool.tuplesaver]
+[tool.sqlir]
 db_path = "data/mydb.sqlite"
 models_module = "myapp.models"
 ```

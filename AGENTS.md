@@ -8,7 +8,7 @@ many "obvious" features are in the *Never, Will not Implement* section.
 
 ## Project at a glance
 
-- Pure-Python library (`tuplesaver/`) that persists immutable dataclass-style
+- Pure-Python library (`sqlir/`) that persists immutable dataclass-style
   models (`Row`, `TableRow`) to SQLite via [apsw](https://rogerbinns.github.io/apsw/).
 - **Python ≥ 3.14 only.** PEP 649 lazy annotations are the baseline — do **not**
   add `from __future__ import annotations`. Annotation resolution goes through
@@ -17,22 +17,22 @@ many "obvious" features are in the *Never, Will not Implement* section.
 - Single-node, single-process design. Do not introduce pooling, threading, or
   multi-writer abstractions.
 
-## Module map (`tuplesaver/`)
+## Module map (`sqlir/`)
 
 | File | Role |
 |------|------|
-| [model.py](tuplesaver/model.py) | `RowMeta` metaclass, `Row` / `TableRow`, deferred model compilation, schema-type inference |
-| [engine.py](tuplesaver/engine.py) | `Engine` CRUD API: `insert`, `find`, `select`, `update`, `delete`, `query` |
-| [adaptconvert.py](tuplesaver/adaptconvert.py) | SQLite ↔ Python adaptation; msgspec fallback for non-native types |
-| [lazy.py](tuplesaver/lazy.py) | `Lazy[M]` deferred FK loader |
-| [cursorproxy.py](tuplesaver/cursorproxy.py) | `AdaptingCursor` + per-model row materialization with `Lazy` FK proxies |
-| [rel.py](tuplesaver/rel.py) | Relation AST: `FieldExpr`, `BinaryExpr`, `LogicalExpr` (produced by `Model.field == value` etc.) |
-| [sql_rel.py](tuplesaver/sql_rel.py) | Lowers `rel` AST + t-strings to SQL fragments (EXISTS semi-joins for FK traversal) |
-| [sql.py](tuplesaver/sql.py) | Whole-statement SQL builders (CREATE/SELECT/INSERT/UPDATE/DELETE) |
-| [migrate.py](tuplesaver/migrate.py) | Migration state machine + apply/generate |
-| [migrate_cli.py](tuplesaver/migrate_cli.py) | `tuplesaver-migrate` CLI |
-| [migrate_scenarios/](tuplesaver/migrate_scenarios) | Per-scenario folders (`SCENARIO.md` + optional `m.py`) consumed by migrate tests |
-| [conftest.py](tuplesaver/conftest.py) | Shared pytest fixtures (`engine`, `sql_log`, `benchmark`, `limit_stack_depth`) |
+| [model.py](sqlir/model.py) | `RowMeta` metaclass, `Row` / `TableRow`, deferred model compilation, schema-type inference |
+| [engine.py](sqlir/engine.py) | `Engine` CRUD API: `insert`, `find`, `select`, `update`, `delete`, `query` |
+| [adaptconvert.py](sqlir/adaptconvert.py) | SQLite ↔ Python adaptation; msgspec fallback for non-native types |
+| [lazy.py](sqlir/lazy.py) | `Lazy[M]` deferred FK loader |
+| [cursorproxy.py](sqlir/cursorproxy.py) | `AdaptingCursor` + per-model row materialization with `Lazy` FK proxies |
+| [rel.py](sqlir/rel.py) | Relation AST: `FieldExpr`, `BinaryExpr`, `LogicalExpr` (produced by `Model.field == value` etc.) |
+| [sql_rel.py](sqlir/sql_rel.py) | Lowers `rel` AST + t-strings to SQL fragments (EXISTS semi-joins for FK traversal) |
+| [sql.py](sqlir/sql.py) | Whole-statement SQL builders (CREATE/SELECT/INSERT/UPDATE/DELETE) |
+| [migrate.py](sqlir/migrate.py) | Migration state machine + apply/generate |
+| [migrate_cli.py](sqlir/migrate_cli.py) | `sqlir-migrate` CLI |
+| [migrate_scenarios/](sqlir/migrate_scenarios) | Per-scenario folders (`SCENARIO.md` + optional `m.py`) consumed by migrate tests |
+| [conftest.py](sqlir/conftest.py) | Shared pytest fixtures (`engine`, `sql_log`, `benchmark`, `limit_stack_depth`) |
 
 ## Commands
 
@@ -48,14 +48,14 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 
 - **Test files are co-located** and named `*_test.py` (see `pyproject.toml`
   `python_files`). Tests for `engine.py` live in
-  [tuplesaver/engine_test.py](tuplesaver/engine_test.py).
+  [sqlir/engine_test.py](sqlir/engine_test.py).
 - **Ruff line length is 190.** Don't break long signatures for cosmetic reasons.
   Selected rule set is broad (`SLF`, `SIM`, `PTH`, `PD`, `ANN001`, `ANN201`,
   `RUF` ...); run `ruff check --fix` after edits.
 - **Type parameter naming:** use `type[R]` on APIs whose return type depends on
   the passed model (`find`, `select`, `query`); use the bare metaclass
   `RowMeta` for internal helpers that only need "a model class". See the
-  docstring on `RowMeta` in [model.py](tuplesaver/model.py).
+  docstring on `RowMeta` in [model.py](sqlir/model.py).
 - **t-strings (PEP 750)** are used to embed model field references in raw
   SQL fragments, e.g. `t"{Athlete.team.name} = 'Red'"`. They are processed by
   `sql_rel.py`. Don't replace them with plain `f"..."`.
@@ -67,7 +67,7 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
   (model types, joins, type-mapping table, web-framework error handling,
   migration states/CLI all live there). [SCRATCH.md](SCRATCH.md) is
   research/links/open-questions **only** — do not put API docs there.
-- **Agent plugin** lives in `agent-plugin/` (`plugin.json` + `skills/tuplesaver/`).
+- **Agent plugin** lives in `agent-plugin/` (`plugin.json` + `skills/sqlir/`).
   The skill bundles `API.md` and `example.py` (a jupytext "percent" export of
   [example.ipynb](example.ipynb)). **Both are generated — never hand-edit
   them.** [scripts/sync_plugin.py](scripts/sync_plugin.py) regenerates them and
@@ -91,8 +91,6 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
   require a `TableRow`. `Row` is for ad-hoc / view-shaped query results only.
 - **Records are immutable.** Use `dataclasses.replace(obj, field=value)`
   before re-saving; never mutate in place and expect persistence.
-- **The package name is still `tuplesaver` even though models are no longer
-  `NamedTuple`s.** Renaming is a tracked TODO — don't preemptively rename.
 
 ## When changing the public API
 

@@ -1,7 +1,7 @@
 from textwrap import dedent
 
-from tuplesaver.model import TableRow
-from tuplesaver.sql_rel import compile_expr
+from sqlir.model import TableRow
+from sqlir.sql_rel import compile_expr
 
 
 class League(TableRow):

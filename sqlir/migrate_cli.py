@@ -1,4 +1,4 @@
-"""CLI front end for TupleSaver migration system."""
+"""CLI front end for sqlir migration system."""
 
 import argparse
 import importlib
@@ -22,13 +22,13 @@ def load_models_from_module(module_path: str) -> list[type[TableRow]]:
 
 
 def load_config() -> dict[str, str]:
-    """Load [tool.tuplesaver] from ./pyproject.toml if it exists."""
+    """Load [tool.sqlir] from ./pyproject.toml if it exists."""
     pyproject = Path("pyproject.toml")
     if not pyproject.exists():
         return {}
     with pyproject.open("rb") as f:
         data = tomllib.load(f)
-    return data.get("tool", {}).get("tuplesaver", {})
+    return data.get("tool", {}).get("sqlir", {})
 
 
 def resolve_args(args: argparse.Namespace) -> tuple[str, str]:
@@ -42,10 +42,10 @@ def resolve_args(args: argparse.Namespace) -> tuple[str, str]:
     models = args.models_module or config.get("models_module")
 
     if not db_path:
-        print("Error: --db-path is required (or set db_path in [tool.tuplesaver])")
+        print("Error: --db-path is required (or set db_path in [tool.sqlir])")
         sys.exit(1)
     if not models:
-        print("Error: --models-module is required (or set models_module in [tool.tuplesaver])")
+        print("Error: --models-module is required (or set models_module in [tool.sqlir])")
         sys.exit(1)
 
     assert isinstance(db_path, str) and isinstance(models, str)
@@ -240,13 +240,13 @@ def cmd_dev(migrate: Migrate, args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
-        prog="tuplesaver-migrate",
-        description="TupleSaver migration CLI",
+        prog="sqlir-migrate",
+        description="sqlir migration CLI",
         epilog=(
             "pyproject.toml config:\n"
-            "  Options can also be set in [tool.tuplesaver]:\n"
+            "  Options can also be set in [tool.sqlir]:\n"
             "\n"
-            "    [tool.tuplesaver]\n"
+            "    [tool.sqlir]\n"
             '    db_path = "path/to/db.sqlite"\n'
             '    models_module = "myapp.models"\n'
             "\n"

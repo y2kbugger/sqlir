@@ -9,8 +9,8 @@ import sys
 
 import apsw
 
-from tuplesaver.engine import Engine
-from tuplesaver.model import Row, TableRow
+from sqlir.engine import Engine
+from sqlir.model import Row, TableRow
 
 # %% [markdown]
 # # Models
@@ -320,7 +320,7 @@ row = engine.select(Athlete).fetchone()
 
 # %% [markdown]
 # # Persisting Native and Advanced Python Types
-# TupleSaver supports a wide variety of standard python types and automatically maps them to SQLite storage. For example, `datetime`, `date`, and `time`, and `Decimal`, `Enum` objects are seamlessly stored as TEXT (ISO-8601) giving them support for SQLite's native date functions. Buffer protocols (`bytes`, `bytearray`, `memoryview`) are automatically adapted to BLOBs.
+# sqlir supports a wide variety of standard python types and automatically maps them to SQLite storage. For example, `datetime`, `date`, and `time`, and `Decimal`, `Enum` objects are seamlessly stored as TEXT (ISO-8601) giving them support for SQLite's native date functions. Buffer protocols (`bytes`, `bytearray`, `memoryview`) are automatically adapted to BLOBs.
 #
 # Additionally, data structures and objects that can be serialized by `msgspec` are natively supported as fallback JSON columns. This includes `list`, `dict`, `set`, `tuple`, `dataclass`, `UUID`, etc.
 
@@ -609,7 +609,7 @@ plt.show()
 # # Model Class
 # The model class itself hold info about the table/model/types/etc
 #
-# See `tuplesaver/model.py` and `RowMeta` for more details.
+# See `sqlir/model.py` and `RowMeta` for more details.
 
 # %%
 Team.__fields__ # just one of a handfule of attrs defined on the model class, populated during compilation.

@@ -17,8 +17,8 @@ from time import perf_counter_ns
 
 import apsw
 
-from tuplesaver.engine import Engine
-from tuplesaver.model import TableRow
+from sqlir.engine import Engine
+from sqlir.model import TableRow
 
 ROWS = 2_500
 RUNS = 10

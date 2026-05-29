@@ -1,4 +1,4 @@
-"""Tests for the TupleSaver migration CLI."""
+"""Tests for the sqlir migration CLI."""
 
 import argparse
 import shutil
@@ -355,7 +355,7 @@ def test_cli_dev_stuck_state(migrate: Migrate, capsys: pytest.CaptureFixture[str
 @pytest.mark.scenario("empty_db")
 def test_cli_main_status(migrate: Migrate) -> None:
     """main() with full argv → SystemExit with correct code."""
-    with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
+    with pytest.raises(SystemExit) as exc_info, patch("sqlir.migrate_cli.make_migrate", return_value=migrate):
         main(["--db-path", "x.db", "--models-module", "m", "status"])
     assert exc_info.value.code == 0
 
@@ -363,7 +363,7 @@ def test_cli_main_status(migrate: Migrate) -> None:
 @pytest.mark.scenario("fresh_db_with_model")
 def test_cli_main_generate(migrate: Migrate) -> None:
     """main() generate → SystemExit(0)."""
-    with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
+    with pytest.raises(SystemExit) as exc_info, patch("sqlir.migrate_cli.make_migrate", return_value=migrate):
         main(["--db-path", "x.db", "--models-module", "m", "generate"])
     assert exc_info.value.code == 0
 
@@ -371,7 +371,7 @@ def test_cli_main_generate(migrate: Migrate) -> None:
 @pytest.mark.scenario("fresh_db_with_model")
 def test_cli_main_dev(migrate: Migrate) -> None:
     """main() dev from MISMATCH → SystemExit(0)."""
-    with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
+    with pytest.raises(SystemExit) as exc_info, patch("sqlir.migrate_cli.make_migrate", return_value=migrate):
         main(["--db-path", "x.db", "--models-module", "m", "dev"])
     assert exc_info.value.code == 0
 
@@ -385,7 +385,7 @@ def test_cli_load_models_from_module(tmp_path: Path) -> None:
     mod_dir = tmp_path / "fake_pkg"
     mod_dir.mkdir()
     (mod_dir / "__init__.py").write_text("")
-    (mod_dir / "models.py").write_text("from tuplesaver.model import TableRow\n\nclass Widget(TableRow):\n    name: str\n")
+    (mod_dir / "models.py").write_text("from sqlir.model import TableRow\n\nclass Widget(TableRow):\n    name: str\n")
     sys.path.insert(0, str(tmp_path))
     try:
         models = load_models_from_module("fake_pkg.models")
@@ -406,7 +406,7 @@ def _run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     import os
 
     return subprocess.run(
-        [sys.executable, "-m", "tuplesaver.migrate_cli", *args],
+        [sys.executable, "-m", "sqlir.migrate_cli", *args],
         capture_output=True,
         text=True,
         cwd=str(cwd),

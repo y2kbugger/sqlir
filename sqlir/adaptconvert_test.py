@@ -502,7 +502,7 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
         assert raw_types[i] == exp_type, f"Field '{field}' expected type '{exp_type}', got '{raw_types[i]}'"
         assert raw_values[i] == exp_raw, f"Field '{field}' expected raw {exp_raw!r}, got {raw_values[i]!r}"
 
-    # 2. Verify complete TupleSaver round-trip object inflation
+    # 2. Verify complete sqlir round-trip object inflation
     fetched = engine.find(AllTypesModel, AllTypesModel.Id(saved.id))
 
     for field, inp_val, _, _, _ in matrix:

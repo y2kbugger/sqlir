@@ -2,8 +2,8 @@
 """Keep the agent plugin's bundled docs in sync with the source of truth.
 
 Source of truth:
-- ``API.md``        -> ``agent-plugin/skills/tuplesaver/API.md`` (verbatim copy)
-- ``example.ipynb`` -> ``agent-plugin/skills/tuplesaver/example.py`` (jupytext
+- ``API.md``        -> ``agent-plugin/skills/sqlir/API.md`` (verbatim copy)
+- ``example.ipynb`` -> ``agent-plugin/skills/sqlir/example.py`` (jupytext
   "percent" format, code only, no outputs)
 
 This script is idempotent: running it twice produces identical output. It is
@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SKILL_DIR = REPO_ROOT / "agent-plugin" / "skills" / "tuplesaver"
+SKILL_DIR = REPO_ROOT / "agent-plugin" / "skills" / "sqlir"
 
 API_SRC = REPO_ROOT / "API.md"
 API_DST = SKILL_DIR / "API.md"
