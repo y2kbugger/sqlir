@@ -1,5 +1,4 @@
 # WIP
-- can we push lazy field making from cursor proxy to adaptconvert? I bet not since it needs to fuck with descriptors.. hmmm... idk
 - convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
 # Bugs
@@ -152,6 +151,7 @@
 
 # Later
 - automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
+- harmonize name rel, relation, pred and predicate
 
 ## JSONB format - probably a breaking change.....so its soon or never
 Basically we would have to wrap all json fields in a sqlite function call that parses and stores the binary format.
@@ -481,3 +481,5 @@ cdef class CythonFieldDescriptor:
   - msgspec handles all common types (bool, list, dict, Enum, UUID, datetime, date, time, set, frozenset, NamedTuple, dataclasses) with zero configuration
   - Adding back a registration layer re-introduces adapter/converter bookkeeping that msgspec makes unnecessary
   - For types msgspec can't handle, convert at the application layer before storing
+- push lazy field making from cursor proxy to adaptconvert?
+    - no, becuase the engine scope/ref isn't available in adapt/convert.

@@ -91,7 +91,7 @@ class RowMeta(type):
             # Temporarily block __getattr__ from returning FieldExprs so dataclass
             # doesn't mistake them for default values.
             type.__setattr__(model_cls, "_is_dataclass_parsing", True)
-            model_cls = cast(RowMeta, dataclass(model_cls))
+            model_cls = cast(RowMeta, dataclass(model_cls, frozen=True))  # ty:ignore[no-matching-overload]
             type.__setattr__(model_cls, "_is_dataclass_parsing", False)
 
         model_cls.__tablename__ = ns.get("__tablename__", typename)

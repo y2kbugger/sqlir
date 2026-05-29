@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from typing import Any, cast
 
 import apsw
@@ -83,6 +83,15 @@ def test_find__id_no_match(engine: Engine) -> None:
 def test_find__adhoc_model(engine: Engine) -> None:
     with pytest.raises(apsw.SQLError):
         engine.find(AdHoc, 1)
+
+
+def test_find__returned_row_is_immutable(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = engine.insert(Team("Lions", 30))
+
+    retrieved = engine.find(Team, row.id)
+    with pytest.raises(FrozenInstanceError):
+        retrieved.name = "Tigers"  # type: ignore[misc]
 
 
 def test_find_by__field(engine: Engine) -> None:
