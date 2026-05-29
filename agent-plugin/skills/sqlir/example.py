@@ -51,7 +51,7 @@ engine.connection.exec_trace = trace_sql_in_color
 # ## Insert row
 
 # %%
-row =engine.insert(MyModel("Bart", dt.datetime.now(), 6.5))
+row = engine.insert(MyModel("Bart", dt.datetime.now(), 6.5))
 row
 
 # %% [markdown]
@@ -193,10 +193,10 @@ assert result is not None
 print(f'The table has {result.scorecount} rows, with an average of {result.avg_score:0.2f}')
 
 # %% [markdown]
-# `engine.select` is a simple yet powerful way to retrieve Models from the database. It returns a typed cursor, which you can iterate (`for row in engine.select(...)`) for streaming, or materialize all at once with `.fetchall()`.
+# ## `engine.select`
+# `engine.select` is a simple yet powerful way to retrieve `Model`s from the database. It returns a typed cursor, which you can iterate (`for row in engine.select(...)`) for streaming, or materialize all at once with `.fetchall()`.
 #
 # The most simple case selects all rows from a table.
-#
 
 # %%
 for player in engine.select(Athlete):
@@ -260,6 +260,25 @@ for r in engine.select(MyModel, top_scorers):
 # %%
 for r in engine.select(MyModel, top_scorers, {'tolerance': .0002}):
     print(f"{r.name:10s} {r.score:6.2f}  {r.date:%Y-%m-%d %H:%M:%S}")
+
+# %% [markdown]
+# or name parameters in the t-string itself if it is meant to be reusable.
+
+# %%
+top_scorers_with_param = t"""
+    {MyModel.score} >= (
+        SELECT MAX({MyModel.score}) * :tolerance
+        FROM {MyModel}
+        )
+"""
+
+# %% [markdown]
+# even build up reusable predicates
+
+# %%
+winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]
+
+engine.select(MyModel, winners_today).fetchall()
 
 # %% [markdown]
 # ## Querys requiring backrefs

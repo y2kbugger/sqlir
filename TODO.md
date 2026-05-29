@@ -150,15 +150,15 @@ item_id)). View (Row) models still use View.field == x.
 
 
 # Later
+- Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `engine.query` escape hatch.
 - Got through and orginize/simplify/deduple/sort and groom the rest of this backlog
 - harmonize name rel, relation, pred and predicate
 - exprs in update values???
 - template string support for full queries, not just predicates? e.g. t'{MyModel:SELECT_FROM} WHERE {MyModel.field} = 1'
     - what about plucky or aggregation queries?
     - how to specify types when getting plucky. righ now this is all solved by just making a Row model. JUST forcing make a model leaves LESS things to remember. this seems like a will not implement.
+- fix typing for rel combos like: `winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]`
 
-## JSONB format - probably a breaking change.....so its soon or never
-Basically we would have to wrap all json fields in a sqlite function call that parses and stores the binary format.
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
 Atomic table replacement that minimizes write-lock duration. Only the rename step holds the lock; all data loading and index building happen outside the critical section.
 
@@ -369,6 +369,10 @@ also allows a default scope
 
   default_scope { where(out_of_print: false) }
 
+## JSONB format
+We will default to TEXT for simplicity and forward compat.
+JSONB[T] would be a custom type that uses the json1 extension to store the data in a binary format, which is more efficient for large JSON objects and allows for indexing. e.g. it would be opt-in
+
 
 
 ## Performance
@@ -459,6 +463,7 @@ cdef class CythonFieldDescriptor:
     def __repr__(self):
         return f"CythonFieldDescriptor(column={self.column}, index={self.index})"
 ```
+
 
 # Probably Never
 - a true cursor proxy and fetchoneonly helper/wrapper
