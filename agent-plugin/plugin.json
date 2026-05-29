@@ -1,0 +1,12 @@
+{
+    "name": "tuplesaver",
+    "version": "0.3.0",
+    "description": "How to use TupleSaver: a simple, opinionated persister for immutable dataclass-style models on SQLite (apsw + msgspec).",
+    "author": {
+        "name": "y2k",
+        "email": "git@y2kbugger.com"
+    },
+    "skills": [
+        "skills/tuplesaver"
+    ]
+}

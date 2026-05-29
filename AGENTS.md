@@ -63,6 +63,18 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
   (`--benchmark-disable` in `addopts`). The `benchmark` fixture pins to CPU
   cores `{6, 7}` — this is intentional and host-specific; do not "fix" it.
 - **`nbstripout`** runs in pre-commit; do not commit notebook outputs.
+- **Docs split:** [API.md](API.md) is the authoritative API/usage reference
+  (model types, joins, type-mapping table, web-framework error handling,
+  migration states/CLI all live there). [SCRATCH.md](SCRATCH.md) is
+  research/links/open-questions **only** — do not put API docs there.
+- **Agent plugin** lives in `agent-plugin/` (`plugin.json` + `skills/tuplesaver/`).
+  The skill bundles `API.md` and `example.py` (a jupytext "percent" export of
+  [example.ipynb](example.ipynb)). **Both are generated — never hand-edit
+  them.** [scripts/sync_plugin.py](scripts/sync_plugin.py) regenerates them and
+  is wired into a `sync-plugin` pre-commit hook (triggers on changes to
+  `API.md`, `example.ipynb`, or the script). `agent-plugin/` is excluded from ruff +
+  ty. Edit the sources (`API.md` / `example.ipynb`), then run
+  `python scripts/sync_plugin.py`.
 
 ## Gotchas
 

@@ -1,3 +1,5 @@
+<!-- AUTO-GENERATED — DO NOT EDIT. Regenerate with: python scripts/sync_plugin.py Source: API.md -->
+
 # API
 
 ## Concepts

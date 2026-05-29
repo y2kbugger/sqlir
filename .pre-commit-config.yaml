@@ -23,6 +23,7 @@ repos:
       types_or: [python, pyi, jupyter]
       require_serial: true
       fail_fast: true
+      exclude: ^agent-plugin/
       args: [--fix]
     - id: ruff-format
       name: ruff format
@@ -31,17 +32,28 @@ repos:
       types_or: [python, pyi, jupyter]
       require_serial: true
       fail_fast: true
+      exclude: ^agent-plugin/
     - id: ty
       name: ty check
       entry: ty check
       language: system
       types_or: [python, pyi, jupyter]
       fail_fast: true
+      exclude: ^agent-plugin/
 - repo: https://github.com/kynan/nbstripout
   rev: '0.8.2'
   hooks:
     -   id: nbstripout
         fail_fast: true
+- repo: local
+  hooks:
+    - id: sync-plugin
+      name: sync-plugin
+      entry: python scripts/sync_plugin.py
+      language: system
+      pass_filenames: false
+      fail_fast: true
+      files: ^(example\.ipynb|API\.md|scripts/sync_plugin\.py)$
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.9.17
   hooks:
