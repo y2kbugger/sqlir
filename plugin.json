@@ -7,6 +7,6 @@
     "email": "git@y2kbugger.com"
   },
   "skills": [
-    "skills/sqlir"
+    "agent-plugin/skills/sqlir"
   ]
 }
