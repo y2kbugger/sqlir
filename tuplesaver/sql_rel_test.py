@@ -117,6 +117,26 @@ def test_compile_template_string_model_splices_tablename():
     assert next_idx == 0
 
 
+def test_compile_template_string_value_uses_expression_name():
+    tolerance = 0.9995
+    expr = t"{Athlete.age} >= {tolerance}"
+    params = {}
+    sql, _ = compile_expr(expr, params)
+
+    assert sql == "Athlete.age >= :tolerance"
+    assert params == {"tolerance": 0.9995}
+
+
+def test_compile_template_string_non_identifier_expression_falls_back_to_pN():
+    expr = t"{Athlete.age} >= {1 + 2}"
+    params = {}
+    sql, next_idx = compile_expr(expr, params)
+
+    assert sql == "Athlete.age >= :p0"
+    assert params == {"p0": 3}
+    assert next_idx == 1
+
+
 def test_compile_template_string_multi_step_scalar_subquery():
     expr = t"LOWER({Athlete.team.league.leaguename}) = 'big'"
     params = {}

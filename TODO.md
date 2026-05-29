@@ -54,6 +54,7 @@
 
 # Next
 - UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
+- make rel template strings easily print as their resolved SQL for debugging
 - types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - interactive restore list too long. can you page restores or head results?
 - Find and remove unused exceptions

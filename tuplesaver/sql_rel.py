@@ -83,8 +83,20 @@ def _compile_field_comparison(left: FieldExpr, op: str, value_sql: str) -> str:
     return f"{field_name} {op} {value_sql}"
 
 
-def _bind_param(value: Any, params: dict[str, Any], param_idx: int) -> tuple[str, int]:
-    """Register `value` as a named parameter and return its `:p<idx>` placeholder."""
+def _bind_param(value: Any, params: dict[str, Any], param_idx: int, name: str | None = None) -> tuple[str, int]:
+    """Register `value` as a named parameter and return its `:<name>` placeholder.
+
+    If `name` is provided and is a valid identifier not already bound, it is
+    used directly so callers can override it by name later. Otherwise a
+    generated `p<idx>` name is used.
+    """
+
+    # Prefer using the expression name as the parameter name, if it's a valid identifier and not already taken.
+    if name and name.isidentifier() and name not in params:
+        params[name] = value
+        return f":{name}", param_idx
+
+    # Fall back to a generated name.
     param_name = f"p{param_idx}"
     params[param_name] = value
     return f":{param_name}", param_idx + 1
@@ -97,7 +109,8 @@ def _compile_tstring(expr: Any, params: dict[str, Any], param_idx: int) -> tuple
         sql_parts.append(string_part)
         if i >= len(expr.interpolations):
             continue
-        val = expr.interpolations[i].value
+        interp = expr.interpolations[i]
+        val = interp.value
         if isinstance(val, RowMeta):
             sql_parts.append(val.__tablename__)
         elif isinstance(val, FieldExpr) and val._model:  # noqa: SLF001
@@ -108,7 +121,7 @@ def _compile_tstring(expr: Any, params: dict[str, Any], param_idx: int) -> tuple
             sub_sql, param_idx = compile_expr(val, params, param_idx)
             sql_parts.append(sub_sql)
         else:
-            placeholder, param_idx = _bind_param(val, params, param_idx)
+            placeholder, param_idx = _bind_param(val, params, param_idx, name=interp.expression)
             sql_parts.append(placeholder)
     return "".join(sql_parts), param_idx
 

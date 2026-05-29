@@ -47,12 +47,12 @@ class Engine:
 
     def insert(self, row: M) -> M: ...
 
-    def find(self, Model: type[M], target, /, *, order=None) -> M: ...
-    def select(self, Model: type[M], target=None, /, *, order=None, limit=None, offset=None) -> TypedCursorProxy[M]: ...
+    def find(self, Model: type[M], target, params=None, /, *, order=None) -> M: ...
+    def select(self, Model: type[M], target=None, params=None, /, *, order=None, limit=None, offset=None) -> TypedCursorProxy[M]: ...
     def query(self, Model: type[M], sql: str, parameters: Sequence | dict | None = None) -> TypedCursorProxy[M]: ...
 
-    def update(self, Model: type[TableRow], target, /, **patch) -> int: ...
-    def delete(self, Model: type[TableRow], target, /) -> int: ...
+    def update(self, Model: type[TableRow], target, params=None, /, **patch) -> int: ...
+    def delete(self, Model: type[TableRow], target, params=None, /) -> int: ...
 ```
 
 - `find` raises `RecordNotFoundError` when nothing matches.
@@ -71,6 +71,16 @@ class Engine:
   is a no-op (returns `0`).
 - `insert` is for `TableRow` only and returns the inserted row with `id`
   populated.
+- `params` (positional, on `find` / `select` / `update` / `delete`) overrides
+  named parameters bound by a t-string `target`. Plain-value interpolations
+  whose source expression is a valid identifier are bound under that name
+  (e.g. `{tolerance}` → `:tolerance`), so the same predicate can be reused
+  with different values:
+  ```python
+  pred = t"{Post.score} >= {min_score}"
+  engine.select(Post, pred, {"min_score": 50})
+  engine.select(Post, pred, {"min_score": 90})
+  ```
 
 ## API Comparison
 

@@ -430,3 +430,61 @@ def test_update__invalid_kwargs(engine: Engine) -> None:
     row = engine.insert(Team("Lions", 30))
     with pytest.raises(InvalidKwargFieldSpecifiedError):
         engine.update(Team, row.id, doesnt_exist="test")
+
+
+# --- t-string predicate param overrides --------------------------------------
+
+
+def test_select__tstring_param_override(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+    engine.insert(Team("Bears", 25))
+
+    min_size = 0
+    predicate = t"{Team.size} >= {min_size}"
+
+    assert len(engine.select(Team, predicate).fetchall()) == 3
+    assert len(engine.select(Team, predicate, {"min_size": 30}).fetchall()) == 2
+    assert len(engine.select(Team, predicate, {"min_size": 100}).fetchall()) == 0
+
+
+def test_find__tstring_param_override(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    name = "Lions"
+    predicate = t"{Team.name} = {name}"
+
+    assert engine.find(Team, predicate).name == "Lions"
+    assert engine.find(Team, predicate, {"name": "Tigers"}).name == "Tigers"
+
+
+def test_update__tstring_param_override(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    target_name = "Lions"
+    predicate = t"{Team.name} = {target_name}"
+
+    changes = engine.update(Team, predicate, {"target_name": "Tigers"}, size=99)
+    assert changes == 1
+    assert engine.find(Team, Team.name == "Tigers").size == 99
+    assert engine.find(Team, Team.name == "Lions").size == 30
+
+
+def test_delete__tstring_param_override(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    target_name = "Lions"
+    predicate = t"{Team.name} = {target_name}"
+
+    changes = engine.delete(Team, predicate, {"target_name": "Tigers"})
+    assert changes == 1
+    assert engine.find(Team, Team.name == "Lions") is not None
+    with pytest.raises(RecordNotFoundError):
+        engine.find(Team, Team.name == "Tigers")

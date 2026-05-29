@@ -124,12 +124,14 @@ class Engine:
             raise e
 
     ##### Reading
-    def find[R: Row | TableRow](self, Model: type[R], target: Any, /, *, order: str | None = None) -> R:
+    def find[R: Row | TableRow](self, Model: type[R], target: Any, params: dict[str, Any] | None = None, /, *, order: str | None = None) -> R:
         """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found."""
-        params: dict[str, Any] = {}
-        sql = build_select_sql(Model, target, params, order=order, limit=1)
+        compiled_params: dict[str, Any] = {}
+        sql = build_select_sql(Model, target, compiled_params, order=order, limit=1)
+        if params:
+            compiled_params.update(params)
 
-        cur = self.query(Model, sql, params)
+        cur = self.query(Model, sql, compiled_params)
         row = cur.fetchone()
         cur.close()
 
@@ -137,7 +139,9 @@ class Engine:
             raise RecordNotFoundError(Model.__name__, target)
         return row
 
-    def select[R: Row | TableRow](self, Model: type[R], target: Any = None, /, *, order: str | None = None, limit: int | None = None, offset: int | None = None) -> TypedCursorProxy[R]:
+    def select[R: Row | TableRow](
+        self, Model: type[R], target: Any = None, params: dict[str, Any] | None = None, /, *, order: str | None = None, limit: int | None = None, offset: int | None = None
+    ) -> TypedCursorProxy[R]:
         """Select rows by a relational expression, returning a typed cursor.
 
         The cursor is iterable (yields model instances) and exposes the usual
@@ -145,11 +149,15 @@ class Engine:
         streaming with `for row in engine.select(...)` or materialize all rows
         with `engine.select(...).fetchall()`.
 
-        If target is missing, selects all rows.
+        If target is missing, selects all rows. `params` overrides named
+        parameters bound by a t-string target, enabling reuse of a predicate
+        with different values.
         """
-        params: dict[str, Any] = {}
-        sql = build_select_sql(Model, target, params, order=order, limit=limit, offset=offset)
-        return self.query(Model, sql, params)
+        compiled_params: dict[str, Any] = {}
+        sql = build_select_sql(Model, target, compiled_params, order=order, limit=limit, offset=offset)
+        if params:
+            compiled_params.update(params)
+        return self.query(Model, sql, compiled_params)
 
     def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict | None = None) -> TypedCursorProxy[R]:
         """Execute raw SQL and return a typed cursor for `Model`"""
@@ -179,7 +187,7 @@ class Engine:
         assert result is not None  # INSERT always returns a row on success
         return result
 
-    def update(self, Model: type[TableRow], target: Any, /, **patch: Any) -> int:
+    def update(self, Model: type[TableRow], target: Any, params: dict[str, Any] | None = None, /, **patch: Any) -> int:
         """Update records matching the target expression."""
         if target is None:
             return 0
@@ -192,23 +200,27 @@ class Engine:
         if invalid_kwargs:
             raise InvalidKwargFieldSpecifiedError(Model, invalid_kwargs)
 
-        params: dict[str, Any] = {**patch}
-        sql = build_update_sql(Model, target, params, frozenset(patch.keys()))
+        compiled_params: dict[str, Any] = {**patch}
+        sql = build_update_sql(Model, target, compiled_params, frozenset(patch.keys()))
+        if params:
+            compiled_params.update(params)
 
-        cur = self.query(Model, sql, params)
+        cur = self.query(Model, sql, compiled_params)
         changes = self.connection.changes()
         cur.close()
         return changes
 
-    def delete(self, Model: type[TableRow], target: Any, /) -> int:
+    def delete(self, Model: type[TableRow], target: Any, params: dict[str, Any] | None = None, /) -> int:
         """Delete records matching the target expression."""
         if target is None:
             return 0
 
-        params: dict[str, Any] = {}
-        query = build_delete_sql(Model, target, params)
+        compiled_params: dict[str, Any] = {}
+        query = build_delete_sql(Model, target, compiled_params)
+        if params:
+            compiled_params.update(params)
 
-        self.connection.execute(query, params)
+        self.connection.execute(query, compiled_params)
         return self.connection.changes()
 
 
