@@ -1,13 +1,6 @@
 # WIP
 
 # Bugs
-- fields with = None defaults return their default value at class
-level (not a FieldExpr), so they can't be used in relation/t-string column
-references. Let me see how _compile_tstring handles literal column names, and
-view the ScheduleItem definition.
-  A TableRow's pk id is None at class level, so Model.id == x silently becomes
-False (=id = 0). Fixed pk lookups to pass a bare int (engine.select(Model,
-item_id)). View (Row) models still use View.field == x.
 - Where exists clause should start on its own line
 - if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
 

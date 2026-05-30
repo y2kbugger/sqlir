@@ -105,33 +105,41 @@ class RowMeta(type):
 
         return model_cls
 
+    def _field_expr(cls, name: str) -> Any:
+        from .rel import FieldExpr
+
+        field = cls.__fields_by_name__[name]
+        target_model = field.type if field.is_fk else None
+        return FieldExpr(name, cls, target_model=target_model)
+
     def __getattribute__(cls, name: str) -> Any:
         if name in _COMPILED_CACHE_ATTRS:
             cls._ensure_compiled()
 
+        # Dunders (incl. the compiled-cache attrs above) are never fields.
+        if name.startswith("__") and name.endswith("__"):
+            return type.__getattribute__(cls, name)
+
+        cls_dict = type.__getattribute__(cls, "__dict__")
+
+        # While dataclass introspects defaults, let it see the real values.
+        if cls_dict.get("_is_dataclass_parsing", False):
+            return type.__getattribute__(cls, name)
+
+        # Declared fields resolve to a FieldExpr, shadowing the concrete default
+        # attr dataclass sets for defaulted fields (``id``, nullable fields).
+        if name in cls_dict.get("__dataclass_fields__", ()):
+            return cls._field_expr(name)
+
         return type.__getattribute__(cls, name)
 
     def __getattr__(cls, name: str) -> Any:
-        if getattr(cls, "_is_dataclass_parsing", False):
-            raise AttributeError(name)
-
-        # Ignore special double-underscore attributes
+        # __getattribute__ intercepts every declared field, so any name reaching
+        # __getattr__ is a genuinely missing attribute. Dunder probes get a plain
+        # error; everything else gets a typo-friendly "no field" message.
         if name.startswith("__") and name.endswith("__"):
             raise AttributeError(name)
-
-        # Only return a FieldExpr for names that actually correspond to a
-        # declared field on the model. Otherwise typos like ``Model.namee``
-        # silently produce expressions instead of raising. ``__fields_by_name__``
-        # access triggers deferred compilation via ``__getattribute__``.
-        fields_by_name = cls.__fields_by_name__
-        if name not in fields_by_name:
-            raise AttributeError(f"{cls.__name__!r} has no field {name!r}")
-
-        from .rel import FieldExpr
-
-        field = fields_by_name[name]
-        target_model = field.type if field.is_fk else None
-        return FieldExpr(name, cls, target_model=target_model)
+        raise AttributeError(f"{cls.__name__!r} has no field {name!r}")
 
     def _ensure_compiled(cls) -> None:
         if not cls._is_compiled:

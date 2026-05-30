@@ -123,3 +123,4 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
     multi-line experiments into `python -c "..."` invocations — they are hard
     to read, hard to iterate on, and hard for the user to follow. The
     `scratch.*` prefix is gitignored / understood to be throwaway.
+- When trying to fix a BUG always first try to reproduce it with a minimal pytest case. This helps explore the problem, verify the cause, verify the fix, and prevents regressions.

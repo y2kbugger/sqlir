@@ -46,6 +46,37 @@ def test_id_shortcut():
     assert expr.right == 42
 
 
+def test_defaulted_field_access_returns_fieldexpr():
+    """Fields with a default (e.g. the pk ``id`` and nullable fields) must yield a
+    FieldExpr at class level, not their default value.
+
+    A dataclass sets a concrete class attribute for any field with a default, so
+    ``Model.id`` would otherwise resolve to ``None`` and ``Model.id == x`` would
+    silently become ``False`` instead of a BinaryExpr.
+    """
+
+    class WithDefaults(TableRow):
+        name: str
+        score: float | None = None
+
+    # pk id has a default of None on TableRow
+    assert isinstance(WithDefaults.id, FieldExpr)
+    assert WithDefaults.id._name == "id"  # noqa: SLF001
+
+    id_expr = WithDefaults.id == 5
+    assert isinstance(id_expr, BinaryExpr)
+    assert id_expr.left._name == "id"  # noqa: SLF001
+    assert id_expr.right == 5
+
+    # nullable field with an explicit default
+    assert isinstance(WithDefaults.score, FieldExpr)
+    assert WithDefaults.score._name == "score"  # noqa: SLF001
+
+    score_expr = WithDefaults.score > 99.95
+    assert isinstance(score_expr, BinaryExpr)
+    assert score_expr.left._name == "score"  # noqa: SLF001
+
+
 def test_unknown_field_raises_attribute_error():
     with pytest.raises(AttributeError, match="nonexistent"):
         Employee.nonexistent  # noqa: B018
