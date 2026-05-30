@@ -3,11 +3,13 @@ from typing import NamedTuple, Optional, Union
 
 import pytest
 
+from .engine import Engine
 from .model import (
     AnyTypeNotAllowedOnTableRow,
     FieldZeroIdMalformed,
     ModelField,
     Row,
+    TableModelInheritanceError,
     TableRow,
     _sql_columndef,
     _unwrap_optional_type,
@@ -186,6 +188,36 @@ def test_meta__valid_table_model() -> None:
         ModelField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
         ModelField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
     )
+
+
+def test_meta__table_model_cannot_subclass_another_table_model() -> None:
+    class BaseModel(TableRow):
+        name: str
+
+    assert [field.name for field in BaseModel.__fields__] == ["id", "name"]
+
+    with pytest.raises(TableModelInheritanceError, match=r"SubModel.*BaseModel"):
+
+        class SubModel(BaseModel):
+            boogie: int
+
+
+def test_meta__row_model_can_subclass_another_row_model_and_query(engine: Engine) -> None:
+    class BaseRow(Row):
+        one: int
+        two: int
+
+    class SubRow(BaseRow):
+        three: int
+
+    assert [field.name for field in BaseRow.__fields__] == ["one", "two"]
+    assert [field.name for field in SubRow.__fields__] == ["one", "two", "three"]
+
+    base_row = engine.query(BaseRow, "SELECT 1 as one, 2 as two;").fetchone()
+    sub_row = engine.query(SubRow, "SELECT 1 as one, 2 as two, 3 as three;").fetchone()
+
+    assert base_row == BaseRow(1, 2)
+    assert sub_row == SubRow(1, 2, 3)
 
 
 def test_meta__extra_methods_and_properties_are_not_treated_as_fields() -> None:

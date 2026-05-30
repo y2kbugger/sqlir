@@ -27,5 +27,15 @@
   "jupyter.interactiveWindow.textEditor.executeSelection": true,
   "ty.inlayHints.callArgumentNames": false,
   "ty.inlayHints.variableTypes": false,
+  "chat.tools.terminal.autoApprove": {
+    "/^ty check$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^ruff check --fix$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  },
   //### Yet unsorted (from settings GUI)
 }

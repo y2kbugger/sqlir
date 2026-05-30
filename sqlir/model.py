@@ -84,6 +84,12 @@ class RowMeta(type):
     _is_compiled: bool
 
     def __new__(cls, typename: str, bases: tuple[type, ...], ns: dict[str, Any]) -> type:
+        table_row_type = globals().get("TableRow")
+        if isinstance(table_row_type, type):
+            invalid_base = next((base for base in bases if issubclass(base, table_row_type) and base is not table_row_type), None)
+            if invalid_base is not None:
+                raise TableModelInheritanceError(typename, invalid_base.__name__)
+
         model_cls = cast(RowMeta, super().__new__(cls, typename, bases, ns))
 
         # apply the dataclass decorator if not already applied
@@ -259,6 +265,11 @@ class AnyTypeNotAllowedOnTableRow(ModelDefinitionError):
             f"Field `{field_name}` of table model `{model_name}` is typed `Any`, which has no storage/schema/SQL type or affinity. "
             f"`Any` is only allowed on `Row` (ad-hoc) models, where it passes the raw SQLite value through unconverted.",
         )
+
+
+class TableModelInheritanceError(ModelDefinitionError):
+    def __init__(self, model_name: str, base_model_name: str) -> None:
+        super().__init__(f"Table model `{model_name}` cannot subclass table model `{base_model_name}`. Subclass `TableRow` directly, or use `Row` for inherited ad-hoc models.")
 
 
 native_columntypes: dict[type, str] = {

@@ -5,14 +5,6 @@
 
 # Testing
 All of these need test cases (or need it verified that a test already exists), either to capture and preserve existing behavior, or to define and enforce new behavior. Some of these are also more like "decisions to make", the codify with tests.
-- Test case that you cannot subclass a tablemodel, e.g.
-    ```python
-    class BaseModel(TableRow):
-        name: str
-
-    class SubModel(BaseModel):  # should raise
-        boogie: int
-    ```
 - test types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
@@ -46,6 +38,7 @@ All of these need test cases (or need it verified that a test already exists), e
   - Test types on engine.find/select
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
 - automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
+    - Add benchmarks for "theoretical max qps", to allow comparison of overhead as well spotting possible areas for improvement.
 - LLM based api fuzzying
 
 # Next

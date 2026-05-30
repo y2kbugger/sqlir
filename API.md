@@ -5,8 +5,10 @@
 **Model (M)** — Typed record definition. Subclass `TableRow` for persisted
 tables, or `Row` for ad-hoc / view-shaped query results. Field `id: int | None`
 is provided automatically by `TableRow` (kw-only, defaulted); do not declare it
-yourself. Models are frozen dataclasses; use `dataclasses.replace(obj, ...)` to
-produce a modified copy.
+yourself. Table models must subclass `TableRow` directly; subclassing an
+existing table model raises `TableModelInheritanceError`. `Row` models may
+subclass each other like normal frozen dataclasses. Models are frozen
+dataclasses; use `dataclasses.replace(obj, ...)` to produce a modified copy.
 
 ```python
 class User(TableRow):
