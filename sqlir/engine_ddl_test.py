@@ -66,13 +66,13 @@ def test_ensure_table_created(engine: Engine) -> None:
         rootpage: int
         sql: str
 
-    tables = engine.query(SqliteSchema, "SELECT * FROM sqlite_schema WHERE type='table'").fetchall()
+    tables = engine._query(SqliteSchema, "SELECT * FROM sqlite_schema WHERE type='table'").fetchall()
     assert len(tables) == 1
     table = tables[0]
     assert table.name == TblDates.__name__
 
     # Columns
-    cols = engine.query(TableInfo, f"PRAGMA table_info({TblDates.__name__})").fetchall()
+    cols = engine._query(TableInfo, f"PRAGMA table_info({TblDates.__name__})").fetchall()
 
     assert len(cols) == len(fields(TblDates))
 
@@ -96,7 +96,7 @@ def test_ensure_table_created_with_related_table(engine: Engine) -> None:
     engine.ensure_table_created(A)
     engine.ensure_table_created(B)
 
-    cols = engine.query(TableInfo, f"PRAGMA table_info({B.__name__})").fetchall()
+    cols = engine._query(TableInfo, f"PRAGMA table_info({B.__name__})").fetchall()
 
     assert len(cols) == len(fields(B))
 
@@ -114,7 +114,7 @@ def test_ensure_table_created_with_optional_related_table(engine: Engine) -> Non
     engine.ensure_table_created(A)
     engine.ensure_table_created(B)
 
-    cols = engine.query(TableInfo, f"PRAGMA table_info({B.__name__})").fetchall()
+    cols = engine._query(TableInfo, f"PRAGMA table_info({B.__name__})").fetchall()
 
     assert len(cols) == len(fields(B))
 

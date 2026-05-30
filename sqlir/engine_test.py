@@ -438,7 +438,7 @@ def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) 
     engine.ensure_table_created(Team)
     engine.insert(Team("Lions", 30))
 
-    cur = engine.query(Team, "SELECT * FROM Team;")
+    cur = engine._query(Team, "SELECT * FROM Team;")
 
     row = cur.fetchone()
     assert isinstance(row, Team)
@@ -446,7 +446,7 @@ def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) 
 
 
 def test_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
-    cur = engine.query(AdHoc, "SELECT 7.7 as score;")
+    cur = engine._query(AdHoc, "SELECT 7.7 as score;")
 
     row = cur.fetchone()
     assert isinstance(row, AdHoc)
@@ -465,7 +465,7 @@ def test_query__datetime_param_is_adapted(engine: Engine) -> None:
     engine.insert(Event("launch", ts))
     engine.insert(Event("deploy", dt.datetime(2025, 1, 1, 9, 0, 0)))
 
-    cur = engine.query(Event, "SELECT * FROM Event WHERE happened_at = ?", (ts,))
+    cur = engine._query(Event, "SELECT * FROM Event WHERE happened_at = ?", (ts,))
     row = cur.fetchone()
 
     assert row is not None
@@ -556,7 +556,7 @@ def test_save__related_model(engine: Engine) -> None:
     team = engine.insert(Team("Lions", 5))
     person = engine.insert(Person("Alice", team))
 
-    row = engine.query(Person, "SELECT * FROM Person;").fetchone()
+    row = engine._query(Person, "SELECT * FROM Person;").fetchone()
     assert row is not None
     assert row == person
 
@@ -579,7 +579,7 @@ def test_save__three_model_relation_chain(engine: Engine) -> None:
     person = engine.insert(Person("Alice", team))
     arm = engine.insert(Arm(30.0, person))
 
-    row = engine.query(Arm, "SELECT * FROM Arm;").fetchone()
+    row = engine._query(Arm, "SELECT * FROM Arm;").fetchone()
     assert row == arm
 
 
@@ -595,7 +595,7 @@ def test_save__null_relation(engine: Engine) -> None:
 
     person = engine.insert(B(None))
 
-    row = engine.query(B, "SELECT * FROM B;").fetchone()
+    row = engine._query(B, "SELECT * FROM B;").fetchone()
     assert row is not None
     assert row == person
 

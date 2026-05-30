@@ -146,7 +146,7 @@ def test_fanout_not_occur() -> None:
     assert {r.teamname for r in rows_semi} == {"Red", "Blue"}
 
     # A join from Team (one side) to Athlete (many side) fans out.
-    rows_join = engine.query(
+    rows_join = engine._query(
         Team,
         """
             SELECT Team.* FROM Team

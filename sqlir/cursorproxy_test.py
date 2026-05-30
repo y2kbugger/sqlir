@@ -182,7 +182,7 @@ def test_proxy__lazy_query__multiple_rows__doesnt_fail(engine: Engine) -> None:
     person1 = engine.insert(Person("Alice", team))
     person2 = engine.insert(Person("Bob", team))
 
-    rows = engine.query(Person, "SELECT * FROM Person;").fetchall()
+    rows = engine._query(Person, "SELECT * FROM Person;").fetchall()
 
     assert rows == [person1, person2]
 
@@ -195,7 +195,7 @@ def test_proxy__when_querying_view_model__does_not_register_as_table_model(engin
 
     assert is_tablerow_model(ModelA) is False
 
-    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
+    cur = engine._query(ModelA, "SELECT 'Alice' as name;")
 
     assert is_tablerow_model(ModelA) is False
 

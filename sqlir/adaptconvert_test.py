@@ -63,7 +63,7 @@ def test_naive_datetime_lexical_sort_order(engine: Engine) -> None:
     for ts in [t3, t1, t4, t2]:
         engine.insert(T(ts))
 
-    rows = engine.query(T, "SELECT * FROM T ORDER BY ts").fetchall()
+    rows = engine._query(T, "SELECT * FROM T ORDER BY ts").fetchall()
     assert [r.ts for r in rows] == [t1, t2, t3, t4]
 
 
@@ -83,7 +83,7 @@ def test_naive_datetime_between_predicate(engine: Engine) -> None:
     for ts in [t_before, t_start, t_mid, t_end, t_after]:
         engine.insert(T(ts))
 
-    rows = engine.query(
+    rows = engine._query(
         T,
         "SELECT * FROM T WHERE ts BETWEEN ? AND ? ORDER BY ts",
         (t_start, t_end),
@@ -112,7 +112,7 @@ def test_mixing_naive_and_aware_datetime_breaks_sort_order(engine: Engine) -> No
     for ts in [aware, naive, with_us]:
         engine.insert(T(ts))
 
-    rows = engine.query(T, "SELECT * FROM T ORDER BY ts").fetchall()
+    rows = engine._query(T, "SELECT * FROM T ORDER BY ts").fetchall()
     stored_order = [r.ts for r in rows]
 
     # naive < naive+microseconds < aware

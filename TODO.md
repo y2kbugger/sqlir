@@ -1,6 +1,5 @@
 # WIP
-- rename to _query, commit
-- rework all _query instance to use __select_query__ paradigm.
+- rework all usage of e._query instance to use __select_query__ paradigm instead. think docs/tests/etc i think example is already convert, save for the demo in anti-pattern.
 - Deprecate _query in docs, and examples.
 - Rework API.md
 

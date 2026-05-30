@@ -135,7 +135,7 @@ class Engine:
         if params:
             compiled_params.update(params)
 
-        cur = self.query(Model, sql, compiled_params)
+        cur = self._query(Model, sql, compiled_params)
         row = cur.fetchone()
         cur.close()
 
@@ -161,12 +161,10 @@ class Engine:
         sql = build_select_sql(Model, target, compiled_params, order=order, limit=limit, offset=offset)
         if params:
             compiled_params.update(params)
-        return self.query(Model, sql, compiled_params)
+        return self._query(Model, sql, compiled_params)
 
-    def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict | None = None) -> TypedCursorProxy[R]:
+    def _query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict | None = ()) -> TypedCursorProxy[R]:
         """Execute raw SQL and return a typed cursor for `Model`"""
-        if parameters is None:
-            parameters = ()
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
@@ -181,7 +179,7 @@ class Engine:
 
         Model = type(row)
         insert = build_insert_sql(Model)
-        cur = self.query(Model, insert, vars(row))
+        cur = self._query(Model, insert, vars(row))
         result = cur.fetchone()
         cur.close()
         assert result is not None  # INSERT always returns a row on success
@@ -205,7 +203,7 @@ class Engine:
         if params:
             compiled_params.update(params)
 
-        cur = self.query(Model, sql, compiled_params)
+        cur = self._query(Model, sql, compiled_params)
         changes = self.connection.changes()
         cur.close()
         return changes

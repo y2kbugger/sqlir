@@ -721,7 +721,7 @@ band
 class AverageScoreAntipattern(Row):
     avg_score: float
 
-engine.query(AverageScoreAntipattern, "SELECT avg(score) FROM MyModel").fetchone()
+engine._query(AverageScoreAntipattern, "SELECT avg(score) FROM MyModel").fetchone()
 
 # %% [markdown]
 # **Recommended:** bind the SQL to the `Row` with `__select_query__`. The query lives with the model, columns map positionally, and you retrieve it with the same `engine.select` / `engine.find` used everywhere else — no raw SQL at the call site.
