@@ -1,3 +1,4 @@
+import re
 from dataclasses import FrozenInstanceError, replace
 from typing import Any, cast
 
@@ -5,6 +6,7 @@ import apsw
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
+from .conftest import SqlLog
 from .engine import (
     Engine,
     InvalidKwargFieldSpecifiedError,
@@ -222,6 +224,74 @@ def test_select__adhoc_model(engine: Engine) -> None:
     r = engine.select(SqliteMaster, SqliteMaster.type == 'table').fetchall()
     assert len(r) == 1
     assert any(row.name == 'Team' for row in r)
+
+
+@pytest.mark.parametrize(
+    ("api_call", "expected_sql_statements"),
+    [
+        pytest.param(
+            lambda engine: engine.ensure_table_created(Team),
+            (
+                r"^CREATE TABLE Team \(",
+                r"^SELECT sql FROM sqlite_master WHERE type='table' AND name='Team'",
+            ),
+            id="ensure_table_created-existing",
+        ),
+        pytest.param(
+            lambda engine: engine.ensure_table_created(Person),
+            (r"^CREATE TABLE Person \(",),
+            id="ensure_table_created-create",
+        ),
+        pytest.param(
+            lambda engine: engine.insert(Team("Lions", 30)),
+            (r"^INSERT INTO Team .* RETURNING id, name, size",),
+            id="insert",
+        ),
+        pytest.param(
+            lambda engine: engine.find(Team, 1),
+            (r"^SELECT .* WHERE id = 1 LIMIT 1",),
+            id="find",
+        ),
+        pytest.param(
+            lambda engine: engine.select(Team, Team.name == "Lions"),
+            (r"^SELECT .* Team\.name = 'Lions'",),
+            id="select",
+        ),
+        pytest.param(
+            lambda engine: engine.query(Team, "SELECT * FROM Team;"),
+            (r"^SELECT \* FROM Team;",),
+            id="query",
+        ),
+        pytest.param(
+            lambda engine: engine.update(Team, 1, name="Tigers"),
+            (r"^UPDATE Team SET name = 'Tigers' WHERE id = 1",),
+            id="update",
+        ),
+        pytest.param(
+            lambda engine: engine.delete(Team, 1),
+            (r"^DELETE FROM Team WHERE id = 1",),
+            id="delete",
+        ),
+    ],
+)
+def test_engine_crud_calls__emit_only_expected_sql_statements(
+    engine: Engine,
+    sql_log: SqlLog,
+    api_call: Any,
+    expected_sql_statements: tuple[str, ...],
+) -> None:
+    """Keep this in sync with added engine.* api methods."""
+    engine.ensure_table_created(Team)
+    sql_log.clear()
+
+    try:
+        api_call(engine)
+    except RecordNotFoundError:
+        pass
+
+    assert len(sql_log.entrys) == len(expected_sql_statements), sql_log.entrys
+    for statement, pattern in zip(sql_log.entrys, expected_sql_statements, strict=True):
+        assert re.search(pattern, re.sub(r"\s+", " ", statement).strip()), statement
 
 
 def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
