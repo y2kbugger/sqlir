@@ -312,17 +312,45 @@ def test_table_meta___related_model() -> None:
     _ = B.__fields__
 
 
-def test_table_meta__related_model_containing_class_declared_first() -> None:
-    """This works because model compilation stays lazy until first real use."""
+def test_table_meta__forward_fk_reference_defined_later__resolves_on_first_use() -> None:
+    """A model may declare an FK to a model defined later because compilation is deferred."""
 
     class B(TableRow):
         name: str
         unknown: A
 
+    assert B.__dict__["_is_compiled"] is False
+
     class A(TableRow):
         name: str
 
     assert B.__fields__[2].type is A
+
+
+def test_table_meta__forward_fk_reference_defined_later__nameerror_if_forced_to_compiler_before_related_fks_defined() -> None:
+    class B(TableRow):
+        name: str
+        unknown: NotYetModel
+
+    assert B.__dict__["_is_compiled"] is False
+    with pytest.raises(NameError, match="NotYetModel"):
+        assert B.__fields__[2].type is NotYetModel  # ty:ignore[unresolved-reference]  # noqa: F821
+
+    class NotYetModel(TableRow):
+        name: str
+
+
+def test_table_meta__forward_fk_reference_never_defined__raises_on_first_use() -> None:
+    class Broken(TableRow):
+        name: str
+        missing: 'MissingModel'  # noqa: F821, UP037  # ty:ignore[unresolved-reference]
+
+    assert Broken.__dict__["_is_compiled"] is False
+
+    with pytest.raises(NameError, match="MissingModel"):
+        _ = Broken.__fields__
+
+    assert Broken.__dict__["_is_compiled"] is False
 
 
 def test_table_meta__related_model_recursive() -> None:

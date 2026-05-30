@@ -5,8 +5,6 @@
 
 # Testing
 All of these need test cases (or need it verified that a test already exists), either to capture and preserve existing behavior, or to define and enforce new behavior. Some of these are also more like "decisions to make", the codify with tests.
-- test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
-- test that you can register a model with an FK that doesn exitst yet. Also test failure to actually evetually define it
 - Test case that you cannot subclass a tablemodel, e.g.
     ```python
     class BaseModel(TableRow):
@@ -175,6 +173,7 @@ This could be the ultimate escape hatch, it might actually even remove need for 
 # Later
 - Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `engine.query` escape hatch.
 - harmonize name rel, relation, pred and predicate, expr, binexpr, fieldexpr, and target in code and docs.
+- harmonize use of storage type, vs sql type, vs column type, vs schema type in code and docs.
 - exprs in update values???
 - template string support for full queries, not just predicates? e.g. t'{MyModel:SELECT_FROM} WHERE {MyModel.field} = 1'
     - what about plucky or aggregation queries?
