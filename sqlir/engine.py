@@ -124,8 +124,12 @@ class Engine:
             raise e
 
     ##### Reading
-    def find[R: Row | TableRow](self, Model: type[R], target: Any, params: dict[str, Any] | None = None, /, *, order: str | None = None) -> R:
-        """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found."""
+    def find[R: Row | TableRow](self, Model: type[R], target: Any = None, params: dict[str, Any] | None = None, /, *, order: str | None = None) -> R:
+        """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found.
+
+        If target is missing or doesn't uniquely identify a row, return the
+        first row. Combine with `order` to deterministically pick a row.
+        """
         compiled_params: dict[str, Any] = {}
         sql = build_select_sql(Model, target, compiled_params, order=order, limit=1)
         if params:

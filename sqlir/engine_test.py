@@ -80,6 +80,28 @@ def test_find__id_no_match(engine: Engine) -> None:
         engine.find(Team, 78787)
 
 
+def test_find__no_target_returns_first_row(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    r1 = engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    assert engine.find(Team) == r1
+
+
+def test_find__no_target_with_order(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    r2 = engine.insert(Team("Tigers", 33))
+
+    assert engine.find(Team, order="size DESC") == r2
+
+
+def test_find__no_target_empty_table(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(RecordNotFoundError):
+        engine.find(Team)
+
+
 def test_find__adhoc_model(engine: Engine) -> None:
     with pytest.raises(apsw.SQLError):
         engine.find(AdHoc, 1)

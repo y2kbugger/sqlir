@@ -4,7 +4,7 @@
 
 
 # Testing
-- e.find without target predicate specified. allow/disallow?
+All of these need test cases, either to capture and preserve existing behavior, or to define and enforce new behavior. Some of these are also more like "decisions to make", the codify with tests.
 - Test delete by id (no match) and update id (no match)?
 - Test that basic engine crud operation emit only the expected statements, e.g. no select before update, etc. DO FOR ALL Engine OPERATIONS
 - test `Any` type on Row/TableRow models. Ban? Allow?
@@ -51,13 +51,12 @@
   - Test types on engine.find/select
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
 - automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
+- LLM based api fuzzying
 
 # Next
 - UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
 - make rel template strings easily print as their resolved SQL for debugging
 - migration interactive restore list too long. can you page restores or head results?
-- Allow order on find?
- - row = e.select(ImportMeta, order="imported_at DESC", limit=1).fetchone()
 
 ## Row Model `__select_query__` for Arbitrary Queries
 Define the query with the Row model, since they don't have a table.
@@ -178,7 +177,7 @@ This could be the ultimate escape hatch, it might actually even remove need for 
 
 # Later
 - Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `engine.query` escape hatch.
-- harmonize name rel, relation, pred and predicate in code and docs.
+- harmonize name rel, relation, pred and predicate, expr, binexpr, fieldexpr, and target in code and docs.
 - exprs in update values???
 - template string support for full queries, not just predicates? e.g. t'{MyModel:SELECT_FROM} WHERE {MyModel.field} = 1'
     - what about plucky or aggregation queries?
@@ -245,6 +244,7 @@ https://docs.datomic.com/datomic-overview.html
 - RoR annotate (and sql comments so that later we can use it during observabilites)
 - Ror-like scopes???
 - FinalizedModel: disable lazy loading of fields, etc. e.g. guarantee immutability before passing to template etc. (needs better name i think)
+- Scalar model type, e.g. RowMeta that is only allow to have a single field, and returns an unwrapped scalar value. (not sure this would work within the static typing.
 
 
 ## engine.upsert
