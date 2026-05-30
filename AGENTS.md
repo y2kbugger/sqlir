@@ -103,7 +103,7 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 ## Dev pratices
 - Always check `TODO.md` before suggesting changes. Many "obvious" features are
   already tracked as non-goals or future work.
-- Cross stuff of when you start it, not when you finish it. This helps track in-progress work and prevents
+- Remove the todo bullet points from `TODO.md` when you start it, not when you finish it. This helps track in-progress work and prevents vestigial todos not getting removed once the work is done.
   duplication.
 - Run tests, then `ty check`, then `ruff check --fix` in that order
     before moving on to the next step.

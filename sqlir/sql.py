@@ -25,7 +25,7 @@ def _append_where(sql: str, target: Any, params: dict[str, Any]) -> str:
         return sql
     where_clause, _ = compile_expr(target, params)
     if where_clause:
-        sql += f" WHERE {where_clause}"
+        sql += f"\nWHERE {where_clause}"
     return sql
 
 
@@ -80,12 +80,15 @@ def build_select_sql(
     if params is None:
         params = {}
     sql = _append_where(_select_clause(Model), target, params)
+    separator = "\n" if "\n" in sql else " "
     if order:
-        sql += f" ORDER BY {order}"
+        sql += f"{separator}ORDER BY {order}"
+        separator = "\n"
     if limit is not None:
-        sql += f" LIMIT {limit}"
+        sql += f"{separator}LIMIT {limit}"
+        separator = "\n"
     if offset is not None:
-        sql += f" OFFSET {offset}"
+        sql += f"{separator}OFFSET {offset}"
     return sql
 
 

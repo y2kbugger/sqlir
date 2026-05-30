@@ -5,6 +5,7 @@ clause fragments and scalar subqueries. Whole-statement templates that
 splice these fragments live in `sql.py`.
 
 This module should only be used by `sql.py` and test code.
+This module should only depend on `model.py` and `rel.py`
 """
 
 from collections.abc import Iterator
@@ -47,8 +48,9 @@ def _build_scalar_subquery(BaseModel: type[TableRow], path: str) -> str:
     hops = list(_walk_fk_hops(BaseModel, parts[:-1]))
     last_alias = hops[-1][3]
     expr = f"{last_alias}.{parts[-1]}"
-    for current_alias, attr, next_model, next_alias in reversed(hops):
-        expr = f"(SELECT {expr} FROM {next_model.__tablename__} {next_alias} WHERE {next_alias}.id = {current_alias}.{attr})"
+    for depth, (current_alias, attr, next_model, next_alias) in enumerate(reversed(hops)):
+        indent = "    " * (len(hops) - 1 - depth)
+        expr = f"(\n{indent}    SELECT {expr}\n{indent}    FROM {next_model.__tablename__} {next_alias}\n{indent}    WHERE {next_alias}.id = {current_alias}.{attr}\n{indent})"
     return expr
 
 

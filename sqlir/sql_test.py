@@ -5,6 +5,7 @@ import pytest
 
 from sqlir.engine import Engine
 from sqlir.model import Row, TableRow
+from sqlir.sql import build_select_sql
 
 
 class League(TableRow):
@@ -53,6 +54,55 @@ def test_select_on_view_model() -> None:
     # Currently engine.select needs TableRow or Row with __tablename__
     query = engine.select(AthleteView)
     assert query.fetchall() == []
+
+
+def test_select_where_exists_clause_starts_on_own_line() -> None:
+    params: dict[str, object] = {}
+
+    sql = build_select_sql(Athlete, Athlete.team.teamname == "Red", params)
+
+    assert sql == dd("""
+        SELECT Athlete.id, Athlete.name, Athlete.team, Athlete.number FROM Athlete
+        WHERE EXISTS (
+            SELECT 1 FROM Team team
+            WHERE team.id = Athlete.team
+            AND team.teamname = :p0
+        )
+    """)
+    assert params == {"p0": "Red"}
+
+
+def test_select_where_simple_clause_starts_on_own_line() -> None:
+    params: dict[str, object] = {}
+
+    sql = build_select_sql(Athlete, 1, params, limit=1)
+
+    assert sql == dd("""
+        SELECT Athlete.id, Athlete.name, Athlete.team, Athlete.number FROM Athlete
+        WHERE id = :p0
+        LIMIT 1
+    """)
+    assert params == {"p0": 1}
+
+
+def test_select_where_tstring_scalar_subquery_clause_starts_on_own_line() -> None:
+    params: dict[str, object] = {}
+
+    sql = build_select_sql(Athlete, t"{Athlete.team.league.leaguename} LIKE 'B%'", params)
+
+    assert sql == dd("""
+        SELECT Athlete.id, Athlete.name, Athlete.team, Athlete.number FROM Athlete
+        WHERE (
+            SELECT (
+                SELECT team_league.leaguename
+                FROM League team_league
+                WHERE team_league.id = team.league
+            )
+            FROM Team team
+            WHERE team.id = Athlete.team
+        ) LIKE 'B%'
+    """)
+    assert params == {}
 
 
 @pytest.mark.skip(reason="need backrefs to support this exists query")

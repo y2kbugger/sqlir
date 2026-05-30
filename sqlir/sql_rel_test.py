@@ -102,7 +102,13 @@ def test_compile_template_string_scalar_subquery():
     params = {}
     sql, next_idx = compile_expr(expr, params)
 
-    assert sql == "LOWER((SELECT team.teamname FROM Team team WHERE team.id = Athlete.team)) = 'red stonks'"
+    assert sql == dd("""
+        LOWER((
+            SELECT team.teamname
+            FROM Team team
+            WHERE team.id = Athlete.team
+        )) = 'red stonks'
+    """)
     assert params == {}
     assert next_idx == 0
 
@@ -142,6 +148,16 @@ def test_compile_template_string_multi_step_scalar_subquery():
     params = {}
     sql, next_idx = compile_expr(expr, params)
 
-    assert sql == "LOWER((SELECT (SELECT team_league.leaguename FROM League team_league WHERE team_league.id = team.league) FROM Team team WHERE team.id = Athlete.team)) = 'big'"
+    assert sql == dd("""
+        LOWER((
+            SELECT (
+                SELECT team_league.leaguename
+                FROM League team_league
+                WHERE team_league.id = team.league
+            )
+            FROM Team team
+            WHERE team.id = Athlete.team
+        )) = 'big'
+    """)
     assert params == {}
     assert next_idx == 0
