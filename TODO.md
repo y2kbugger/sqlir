@@ -51,6 +51,8 @@ item_id)). View (Row) models still use View.field == x.
     - maybe resurect some of the old benchmarks for this.
 - ensure that ID fields are always stored as integer affinity. i really think there are some landmines with tables having "text" in the the name. maybe all id columns should just be INT now that we do adapt/convert without relying on sql column types.
 - Can a modeul use dataclass feature like "field"? should we make a custom one?
+- Test that Row models DO NOT have __table_name__
+    - Also why does find, and select etc, allow `Row` models currently? Once we do the `__select_query__` feature this makes more sense, but i don't think it could work right now.
 
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
@@ -62,13 +64,47 @@ item_id)). View (Row) models still use View.field == x.
 # Next
 - UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
 - make rel template strings easily print as their resolved SQL for debugging
-- interactive restore list too long. can you page restores or head results?
-- Find and remove unused exceptions
-- ai skill for library usage
+- migration interactive restore list too long. can you page restores or head results?
 - Allow order on find?
  - row = e.select(ImportMeta, order="imported_at DESC", limit=1).fetchone()
-- consider that the param overloading was a mistake. because if you are going to define a resuable query you won't want to put it variable in module scope, but then if you put it in a def, you might as just reuse the def itself to override different param values.
-  maybe there is another convention for defining "required params" in t string? i like not hiding queries behind callables because other messes can come out of that. on the other hand it adds flexibility.
+
+## Row Model `__select_query__` for Arbitrary Queries
+Define the query with the Row model, since they don't have a table.
+They are always positionally mapped, so you can let columns be named anything.
+
+
+```python
+class TableInfo(Row):
+    cid: int
+    name: str
+    type: str
+    notnull: int
+    dflt_value: Any
+    pk: int
+
+    __select_query__ = f"PRAGMA table_info({Athlete.__name__})"
+
+engine.select(TableInfo)
+```
+
+It could also handle aggregations, e.g. total power by character name
+```python
+class Character_TotalPower(Row):
+    id: int
+    name: str
+    total_power: float
+
+    __select_query__ = f"""
+        SELECT {Character.id}, {Character.name}, sum({Character.stats} -> '$.power') as total_power
+        FROM {Character}
+        GROUP BY {Character.name}
+        """
+engine.select(Character_TotalPower)
+```
+
+This would also cover many wacky query scenarios in addition to aggregations and simple plucking: it would allow custom joins, json manipulation, sqlite propreitary functions. UNION ... UNION ... monstrosities. and all you need to do is define the model. I suggest a field name __select_query__ or something like that to make it clear that this is a full query and not just a predicate. This can also be made to work with order and limit fields on e.find/e.select via subquery wrapping.
+
+This could be the ultimate escape hatch, it might actually even remove need for e.query?? since like what is a query without a return model, it can even be done right now you always have to make the model anyway. With LLMs i think it is better to just drop to SQL earlier than later, and make it easy to do so, and clear about the return types.
 
 
 
@@ -151,13 +187,15 @@ item_id)). View (Row) models still use View.field == x.
 
 # Later
 - Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `engine.query` escape hatch.
-- Got through and orginize/simplify/deduple/sort and groom the rest of this backlog
-- harmonize name rel, relation, pred and predicate
+- harmonize name rel, relation, pred and predicate in code and docs.
 - exprs in update values???
 - template string support for full queries, not just predicates? e.g. t'{MyModel:SELECT_FROM} WHERE {MyModel.field} = 1'
     - what about plucky or aggregation queries?
     - how to specify types when getting plucky. righ now this is all solved by just making a Row model. JUST forcing make a model leaves LESS things to remember. this seems like a will not implement.
+    - This should come after the `__select_query__` feature, which will end up leveraging this.
 - fix typing for rel combos like: `winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]`
+- Find and remove unused exceptions
+
 
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
 Atomic table replacement that minimizes write-lock duration. Only the rename step holds the lock; all data loading and index building happen outside the critical section.
@@ -208,58 +246,15 @@ https://docs.datomic.com/datomic-overview.html
 
 # One Day Maybe
 - check for valid json on json fields
-- pickling type, make a type annotation like `Pickle[MyType]` that would automatically pickle and unpickle the field, and raise if it fails to pickle or unpickle. This fills a gap left by the expunging of custom adapt/convert pairs.
 - support sql column defs with default values, e.g. `name: str = "default name"` and then have that be the default value for the column in the create table statement, and also have it be the default value for the field when creating a new instance of the model without specifying that field.
     - maybe we already have this via field
 - Auto detect or provide a way to santize/escape LIKE params. e.g.  of % or _
 - engine.exists (rails has relation.exists, e.g. Customer.where(first_name: "Ryan").exist
 - scalar accessors, e.g. RoR AR's pick. get one value from one row and one. note: this is already built into apsw, engine.get
 - RoR annotate (and sql comments so that later we can use it during observabilites)
+- Ror-like scopes???
+- FinalizedModel: disable lazy loading of fields, etc. e.g. guarantee immutability before passing to template etc. (needs better name i think)
 
-
-## Frozen Model
-- e.g. disable lazy loading of fields, etc
-  - to guarantee immutability after load, before passing to template etc.
-
-
-## GROUP BY / Aggregation
-Aggregations queries are more tightly coupled to Row model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
-just a stylistic choice
-
-Use Python 3.14 lazy annotations directly here; do not rely on `from __future__ import annotations`.
-
-```python
-class Person_TotalScore(Row):
-    name: str
-    total_score: Annotated[int, f"sum({Person.score})"]
-
-@select(Person_TotalScore)
-def apple_total()
-    f"""
-    WHERE {Person.name} = 'Apple'
-    GROUP BY {Person.name}
-    """
-engine.query(*apple_total)
-
-# or in the nested style, to communicate coupling
-class Person_TotalScore(Row):
-    name: str
-    total_score: Annotated[int, f"sum({Person.score})"]
-
-  @select(Person_TotalScore)
-  def apple_total():
-      f"""
-      WHERE {Person.name} = 'Apple'
-      GROUP BY {Person.name}
-      """
-engine.query(Person_TotalScore.apple_total)
-```
-Both of these would generate the same SQL
-```sql
-SELECT name, sum(score) as total_score
-FROM Person
-WHERE name = 'Apple'
-```
 
 ## engine.upsert
 | Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
@@ -311,68 +306,12 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 ```
 
-## Row model `SELECT`ing from multiple tables, e.g. ror's `pluck`
-
-```python
-class Athlete_WithTeamName(Row):
-    name: str
-    team_name: Annotated[str, f"{Athlete.team.name}"]
-
-engine.query(*select(Athlete_WithTeamName))
-```
-```sql
-SELECT Athlete.name, Athlete.team.name as team_name
-FROM Athlete
-JOIN Team team ON Athlete.team = team.id
-```
-
-## JSON extracted field in SELECT
-This kind of thing is already supported effortlessly in select style predicates.
-This might come for free with aggregations.
-```python
-class Character_WithSpell(Row):
-    id: int
-    name: str
-    spell: Annotated[str, f"{Character.stats} -> '$.spell'"]
-
-engine.query(*select(Character_WithSpell))
-```
-```sql
-SELECT id, name, stats -> '$.spell' as spell
-FROM Character
-```
-
-## A way to package queries with models to make view like objects??
-Could be one or more queries for one model. Could have parameters. could want to
-reuse by adding where, or somethiing else??
-```python
-class TableInfo(Row):
-    cid: int
-    name: str
-    type: str
-    notnull: int
-    dflt_value: Any
-    pk: int
-
-sql = f"PRAGMA table_info({Athlete.__name__})"
-
-cols = engine.query(TableInfo, sql).fetchall()
-```
-Note: this is sortof like RoR AR's scopes
-  scope :in_print, -> { where(out_of_print: false) }
-  scope :out_of_print, -> { where(out_of_print: true) }
-  scope :old, -> { where(year_published: ...50.years.ago.year) }
-  scope :out_of_print_and_expensive, -> { out_of_print.where("price > 500") }
-  scope :costs_more_than, ->(amount) { where("price > ?", amount) }
-
-also allows a default scope
-
-  default_scope { where(out_of_print: false) }
 
 ## JSONB format
 We will default to TEXT for simplicity and forward compat.
 JSONB[T] would be a custom type that uses the json1 extension to store the data in a binary format, which is more efficient for large JSON objects and allows for indexing. e.g. it would be opt-in
-
+## pickling type
+make a type annotation like `Pickle[MyType]` that would automatically pickle and unpickle the field, and raise if it fails to pickle or unpickle. This fills a gap left by the expunging of custom adapt/convert pairs.
 
 
 ## Performance
@@ -385,85 +324,17 @@ JSONB[T] would be a custom type that uses the json1 extension to store the data 
 - types of eager loads, see https://guides.rubyonrails.org/active_record_querying.html#eager-loading-associations
 approx 20% perf boost for execute many on 20k rows, not worth it, yet
 - Bulk inserts
+    move this to a benchmark script:
+    ```python
+    def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
+        """Insert multiple rows at once."""
+        insert = get_meta(Model).insert
+        assert insert is not None, "Insert statement should be defined for the model."
+        with self.connection:
+            self.connection.executemany(insert, rows)
+    ```
 
-```python
-def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
-    """Insert multiple rows at once."""
-    insert = get_meta(Model).insert
-    assert insert is not None, "Insert statement should be defined for the model."
-    with self.connection:
-        self.connection.executemany(insert, rows)
-```
-
-## Nontable Model Reuse/Composition
-This would be like relations in RoR AR
-I believe a nontable model can reference another one.
-This seems in theory possible, but might have impossible edge cases
-```python
-class Character_WithPowerColumn(Row):
-    id: int
-    name: str
-    power: Annotated[str, f"{Character.stats} -> '$.power'"]
-
-class Character_TotalPower(Row):
-    id: int
-    name: str
-    total_power: Annotated[str, f"sum{Character_WithPowerColumn.power}"]
-
-  @select(Character_TotalPower)
-  def total_power():
-      f"GROUP BY {Character.name}"
-
-engine.query(*Character_TotalPower.total_power)
-```
-```sql
-SELECT id, name, sum(stats -> '$.power') as total_power
-FROM Character
-GROUP BY name
-```
-
-## Cython implementation for faster field descriptor access for lazy loading, etc
-Cython implementation of FieldDescriptor for better performance
-`field_descriptor.pyx`
-``` python
-cdef class Column:
-    """Fast Column class using Cython"""
-    cdef public str name
-    cdef public object coltype
-
-    def __init__(self, str name, object coltype):
-        self.name = name
-        self.coltype = coltype
-
-    def __repr__(self):
-        return f"Column(name={self.name!r}, coltype={self.coltype!r})"
-
-    def __eq__(self, other):
-        if not isinstance(other, Column):
-            return False
-        return self.name == other.name and self.coltype == other.coltype
-
-
-cdef class CythonFieldDescriptor:
-    """High-performance field descriptor using Cython"""
-    cdef public Column column
-    cdef public int index
-
-    def __init__(self, Column column, int index):
-        self.column = column
-        self.index = index
-
-    def __get__(self, object instance, object owner):
-        # Fast path: if instance is None, return Column
-        if instance is None:
-            return self.column
-        # Fast path: direct tuple indexing for instances
-        return instance[self.index]
-
-    def __repr__(self):
-        return f"CythonFieldDescriptor(column={self.column}, index={self.index})"
-```
-
+## Cython implementation for faster model, must benchmark and actually know
 
 # Probably Never
 - a true cursor proxy and fetchoneonly helper/wrapper

@@ -31,6 +31,8 @@ Two reference files are bundled alongside this skill. Read them on demand:
   bytes, JSON fallbacks), raw-SQL escape hatches, and performance scenarios.
   Read this for concrete, copy-pasteable usage patterns.
 
+> Prioritize reading `API.md` and `example.py` provided here, they are a very concentrated source of best practices. It should be a RARE occurrence that you need to venture into source code, for instance if you are troubleshooting a suspected implementation bug/quirk/edge-case.
+
 ## Core rules to honor when writing sqlir code
 
 - **Models are immutable.** Use `dataclasses.replace(obj, field=value)` to make
