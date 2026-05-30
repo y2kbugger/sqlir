@@ -82,6 +82,8 @@ This would also cover many wacky query scenarios in addition to aggregations and
 
 This could be the ultimate escape hatch, it might actually even remove need for e.query?? since like what is a query without a return model, it can even be done right now you always have to make the model anyway. With LLMs i think it is better to just drop to SQL earlier than later, and make it easy to do so, and clear about the return types.
 
+This might change api a bit. it would let end users avoid accessing sql.py functs directly. right now they sometimes use build_select_.... instead they should be abot to grab it right from the model just like table name etc. eventually we will make sql.py private
+
 
 
 ## Backpop
@@ -172,6 +174,7 @@ This could be the ultimate escape hatch, it might actually even remove need for 
     - This should come after the `__select_query__` feature, which will end up leveraging this.
 - fix typing for rel combos like: `winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]`
 - Find and remove unused exceptions
+- make sql*.py private also rel*.py probably...
 
 
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
