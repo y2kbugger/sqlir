@@ -8,8 +8,6 @@ All of these need test cases (or need it verified that a test already exists), e
 - test types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
-- test is_registered_fieldtype
-  - unknown types, unregistered models, both Optional and non-Optional variants
 - find, if more than one result matched
 - Test that non Fields greater than zero cannot be called id
 - Test for cyclic data structures e.g. A -> B -> C -> A
@@ -21,25 +19,26 @@ All of these need test cases (or need it verified that a test already exists), e
 - Test can get using model with int as FK rather than Model to stop recursive loading
   e.g. int instead of Node in a Person_IntFK model
 - Test you can have two field of same type,e.g. right_node, left_node
-- How to test that we don't trigger lazy queries ourselves?
-- Validate in Meta creation that related models in fields of table models are actually table models and not alt/adhoc models
-- Test duplicate joins in query.select deduplicates
-- Benchmark and test connection creation and closing
-- benchmark model creation, field access, hashing, and memory footprint vs plain NamedTuple and dataclass baselines,
-    - maybe resurect some of the old benchmarks for this.
+- Validate during Model compilation that FK related models are TableRow and now just Row.
+- Test that you _may_ have a TableRow FK in a Row model.
 - ensure that ID fields are always stored as integer affinity. i really think there are some landmines with tables having "text" in the the name. maybe all id columns should just be INT now that we do adapt/convert without relying on sql column types.
-- Can a modeul use dataclass feature like "field"? should we make a custom one?
+- Can a model use dataclass feature like "field"? should we make a custom one?
 - Test that Row models DO NOT have __table_name__
     - Also why does find, and select etc, allow `Row` models currently? Once we do the `__select_query__` feature this makes more sense, but i don't think it could work right now.
 
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
 - use the assert_type from typing to check type hints
-  - Test types on engine.find/select
+  - Test types on engine.find/select/etc
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
+- LLM based api fuzzying
+
+## benchmarking
 - automate a benchmark suite that outputs one large markdown results file, including all context needed to interpret the numbers
     - Add benchmarks for "theoretical max qps", to allow comparison of overhead as well spotting possible areas for improvement.
-- LLM based api fuzzying
+- Benchmark and test connection creation and closing
+- benchmark model creation, field access, hashing, and memory footprint vs plain NamedTuple and dataclass baselines,
+    - maybe resurect some of the old benchmarks for this.
 
 # Next
 - UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
