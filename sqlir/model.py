@@ -79,6 +79,7 @@ class RowMeta(type):
     __lazy_relations__: tuple[tuple[int, str, type[TableRow]], ...]
     __lazy_field_names__: frozenset[str]
     __converter__: RowConverter
+    __select_query__: Any
     _is_dataclass_parsing: bool
     _tablename_is_default: bool
     _is_compiled: bool
@@ -106,6 +107,7 @@ class RowMeta(type):
         model_cls.__lazy_relations__ = ()
         model_cls.__lazy_field_names__ = frozenset()
         model_cls.__converter__ = _uncompiled_rowconverter
+        model_cls.__select_query__ = ns.get("__select_query__")
         type.__setattr__(model_cls, "_tablename_is_default", "__tablename__" not in ns)
         type.__setattr__(model_cls, "_is_compiled", False)
 
@@ -181,8 +183,11 @@ class RowMeta(type):
 
         table_name = _current_table_name(cls)
 
-        if "_" in cls.__name__:
-            raise InvalidTableName(cls.__name__)
+        if is_tablerow_model(cls):
+            if "_" in cls.__name__:
+                raise InvalidTableName(cls.__name__)
+            if cls.__select_query__ is not None:
+                raise SelectQueryNotAllowedOnTableRow(cls.__name__)
 
         lazy_relations = tuple((idx, field.name, cast(type[TableRow], field.type)) for idx, field in enumerate(fields) if field.is_fk)
 
@@ -259,6 +264,13 @@ class InvalidTableName(ModelDefinitionError):
         super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for alternate models.")
 
 
+class SelectQueryNotAllowedOnTableRow(ModelDefinitionError):
+    def __init__(self, model_name: str) -> None:
+        super().__init__(
+            f"Table model `{model_name}` cannot define `__select_query__`. `__select_query__` is only allowed on `Row` (ad-hoc) models, which have no backing table.",
+        )
+
+
 class AnyTypeNotAllowedOnTableRow(ModelDefinitionError):
     def __init__(self, model_name: str, field_name: str) -> None:
         super().__init__(
@@ -283,6 +295,11 @@ native_columntypes: dict[type, str] = {
 def is_tablerow_model(cls: object) -> bool:
     """Test at runtime whether an object is a TableRow model."""
     return isinstance(cls, type) and issubclass(cls, TableRow)
+
+
+def has_select_query(Model: object) -> bool:
+    """Test whether a model binds its own query via `__select_query__`, an arbitrary SQL the model is loaded from."""
+    return getattr(Model, "__select_query__", None) is not None
 
 
 def _current_table_name(Model: RowMeta) -> str:

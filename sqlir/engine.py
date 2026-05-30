@@ -6,7 +6,7 @@ from typing import Any
 
 import apsw
 
-from .adaptconvert import AdaptingCursor, adapt_value
+from .adaptconvert import AdaptingCursor
 from .cursorproxy import TypedCursorProxy
 
 # NOTE: engine.py should only know about .model, but not .query
@@ -167,10 +167,6 @@ class Engine:
         """Execute raw SQL and return a typed cursor for `Model`"""
         if parameters is None:
             parameters = ()
-        if isinstance(parameters, dict):
-            parameters = {k: adapt_value(v) if v is not None else None for k, v in parameters.items()}
-        else:
-            parameters = tuple(adapt_value(v) if v is not None else None for v in parameters)
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 

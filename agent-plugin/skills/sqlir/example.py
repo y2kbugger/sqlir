@@ -167,13 +167,11 @@ athlete.team.league.leaguename # multi-step lazy loading
 # # Querying
 
 # %% [markdown]
-# `engine.query` is the raw-SQL escape hatch. Pass a SQL string and (optionally) parameters; it returns a typed cursor over the rows materialized as the given model.
+# For model-relation-based filtering, use `engine.select` / `engine.find` — they generate the SQL for you.
 #
-# ```python
-# engine.query(Model, sql, params)
-# ```
+# For everything else (aggregations, custom joins, PRAGMAs), bind arbitrary SQL to a `Row` model with `__select_query__`, then run it with `engine.select` / `engine.find` the same way. Columns map positionally, so they can be named anything.
 #
-# For model-relation-based filtering, use `engine.select` / `engine.find` instead — they generate the SQL for you.
+# Here, an aggregation rolled up into a single-row `Row`:
 
 # %%
 # insert some data since we deleted all MyModels earlier
@@ -185,12 +183,36 @@ class AverageScoreResults(Row):
     avg_score: float
     scorecount: int
 
-sql = 'SELECT avg(score), count(*) FROM MyModel'
+    __select_query__ = t"SELECT avg({MyModel.score}), count(*) FROM {MyModel}"
 
-result = engine.query(AverageScoreResults, sql).fetchone()
-assert result is not None
+result = engine.find(AverageScoreResults)
 
 print(f'The table has {result.scorecount} rows, with an average of {result.avg_score:0.2f}')
+
+# %% [markdown]
+# ### Binding a query to the model with `__select_query__`
+#
+# A `Row` model carries its own query — bake the SQL onto it as `__select_query__`, and `engine.select` / `engine.find` run that query directly. Columns map positionally, so they can be named anything.
+#
+# You can still pass `order` / `limit` / `offset` — and even a relational `target`. The query is wrapped as a derived table, so the predicate filters on the model's *own* output columns (e.g. `TopScores.score`), not the underlying table.
+
+# %%
+class TopScores(Row):
+    name: str
+    score: float
+
+    # the model carries its own query; columns map positionally
+    __select_query__ = t"SELECT {MyModel.name}, {MyModel.score} FROM {MyModel}"
+
+# order / limit apply via subquery wrapping
+print("top 3:")
+for r in engine.select(TopScores, order="score DESC", limit=3):
+    print(f"{r.name:10s} {r.score:6.2f}")
+
+# a relational target filters on the model's OWN output columns
+print("\nscore > 5:")
+for r in engine.select(TopScores, TopScores.score > 5, order="score DESC"):
+    print(f"{r.name:10s} {r.score:6.2f}")
 
 # %% [markdown]
 # ## `engine.select`
@@ -298,16 +320,20 @@ engine.select(MyModel, winners_today).fetchall()
 # engine.select(League, League.teams.teamname == "Big")
 # ```
 #
-# For now just fallback to raw queries:
+# For now, bake the join into a `Row` model with `__select_query__`:
 
 # %%
-sql = """
-SELECT * FROM League
-JOIN Team ON Team.league = League.id
-WHERE Team.teamname = 'Big'
-"""
+class BigLeague(Row):
+    id: int | None
+    leaguename: str
 
-engine.query(League, sql).fetchone()
+    __select_query__ = t"""
+    SELECT {League}.* FROM {League}
+    JOIN {Team} ON {Team.league} = {League.id}
+    WHERE {Team.teamname} = 'Big'
+    """
+
+engine.select(BigLeague).fetchone()
 
 # %% [markdown]
 # ## Ad-hoc models and the `Any` type
@@ -324,15 +350,16 @@ class TableInfo(Row):
     dflt_value: Any # `Any` will return raw value matching python's bare sqlite3, without conversion
     pk: int
 
-sql = f"PRAGMA table_info({Athlete.__name__})"
+    # a plain PRAGMA also works as a __select_query__
+    __select_query__ = t"PRAGMA table_info({Athlete})"
 
-cols = engine.query(TableInfo, sql).fetchall()
+cols = engine.select(TableInfo).fetchall()
 for col in cols:
     print(f"{col.cid:2d} {col.name:10s} {col.type:10s} {str(col.dflt_value or 'None'):10s}")
 
 # %% [markdown]
 # ## SQLite3 Cursor
-# Both `engine.query` and `engine.select` return a `TypedCursorProxy[M]` — a real `apsw.Cursor` with model-aware row materialization. Iterate it to stream, or call `fetchone` / `fetchall` / `fetchmany` as needed.
+# `engine.select` returns a `TypedCursorProxy[M]` — a real `apsw.Cursor` with model-aware row materialization. Iterate it to stream, or call `fetchone` / `fetchall` / `fetchmany` as needed.
 
 # %%
 row = engine.select(Athlete).fetchone()
@@ -676,5 +703,44 @@ band_with_instrument = t"EXISTS (SELECT 1 FROM BandMember WHERE BandMember.band 
 
 band = engine.find(Band, band_with_instrument, {"instrument": "Keyboards"})
 band
+
+# %% [markdown]
+# ## Reaching for the private `_query` escape hatch
+#
+# `engine._query(Model, sql)` is private plumbing — it runs arbitrary SQL and materializes the rows as `Model`. Calling it directly scatters raw SQL across your call sites and divorces a `Row` from the query that produces it. A `Row` should carry its own query instead.
+#
+# ```python
+# class AverageScore(Row):
+#     avg_score: float
+#
+# engine._query(AverageScore, "SELECT avg(score) FROM MyModel").fetchone()
+# ```
+
+# %%
+# Anti-pattern: reaching for the private raw-SQL escape hatch.
+class AverageScoreAntipattern(Row):
+    avg_score: float
+
+engine.query(AverageScoreAntipattern, "SELECT avg(score) FROM MyModel").fetchone()
+
+# %% [markdown]
+# **Recommended:** bind the SQL to the `Row` with `__select_query__`. The query lives with the model, columns map positionally, and you retrieve it with the same `engine.select` / `engine.find` used everywhere else — no raw SQL at the call site.
+#
+# ```python
+# class AverageScore(Row):
+#     avg_score: float
+#     __select_query__ = t"SELECT avg({MyModel.score}) FROM {MyModel}"
+#
+# engine.find(AverageScore)
+# ```
+
+# %%
+# Recommended: the query lives on the model.
+class AverageScoreBound(Row):
+    avg_score: float
+
+    __select_query__ = t"SELECT avg({MyModel.score}) FROM {MyModel}"
+
+engine.find(AverageScoreBound)
 
 # %%

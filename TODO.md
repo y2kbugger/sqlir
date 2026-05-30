@@ -1,4 +1,8 @@
 # WIP
+- rename to _query, commit
+- rework all _query instance to use __select_query__ paradigm.
+- Deprecate _query in docs, and examples.
+- Rework API.md
 
 # Bugs
 
@@ -43,47 +47,6 @@ All of these need test cases (or need it verified that a test already exists), e
 # Next
 - make rel template strings easily print as their resolved SQL for debugging
 - migration interactive restore list too long. can you page restores or head results?
-
-## Row Model `__select_query__` for Arbitrary Queries
-Define the query with the Row model, since they don't have a table.
-They are always positionally mapped, so you can let columns be named anything.
-
-
-```python
-class TableInfo(Row):
-    cid: int
-    name: str
-    type: str
-    notnull: int
-    dflt_value: Any
-    pk: int
-
-    __select_query__ = f"PRAGMA table_info({Athlete.__name__})"
-
-engine.select(TableInfo)
-```
-
-It could also handle aggregations, e.g. total power by character name
-```python
-class Character_TotalPower(Row):
-    id: int
-    name: str
-    total_power: float
-
-    __select_query__ = f"""
-        SELECT {Character.id}, {Character.name}, sum({Character.stats} -> '$.power') as total_power
-        FROM {Character}
-        GROUP BY {Character.name}
-        """
-engine.select(Character_TotalPower)
-```
-
-This would also cover many wacky query scenarios in addition to aggregations and simple plucking: it would allow custom joins, json manipulation, sqlite propreitary functions. UNION ... UNION ... monstrosities. and all you need to do is define the model. I suggest a field name __select_query__ or something like that to make it clear that this is a full query and not just a predicate. This can also be made to work with order and limit fields on e.find/e.select via subquery wrapping.
-
-This could be the ultimate escape hatch, it might actually even remove need for e.query?? since like what is a query without a return model, it can even be done right now you always have to make the model anyway. With LLMs i think it is better to just drop to SQL earlier than later, and make it easy to do so, and clear about the return types.
-
-This might change api a bit. it would let end users avoid accessing sql.py functs directly. right now they sometimes use build_select_.... instead they should be abot to grab it right from the model just like table name etc. eventually we will make sql.py private
-
 
 
 ## Backpop
@@ -164,9 +127,10 @@ This might change api a bit. it would let end users avoid accessing sql.py funct
 
 
 # Later
-- Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `engine.query` escape hatch.
+- Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `__select_query__` escape hatch.
 - harmonize name rel, relation, pred and predicate, expr, binexpr, fieldexpr, and target in code and docs.
 - harmonize use of storage type, vs sql type, vs column type, vs schema type in code and docs.
+- harmonize and group exceptions better with a clearer hierarchy.
 - exprs in update values???
 - template string support for full queries, not just predicates? e.g. t'{MyModel:SELECT_FROM} WHERE {MyModel.field} = 1'
     - what about plucky or aggregation queries?
@@ -200,7 +164,6 @@ I want to be able to explain model function. This would explain what the type an
 This would help distinguish between a list of model and a list of something else. 
 This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
 - Also want to explain querys from engine
-  - This could also be an off ramp from engine.select to a more generic query builder, e.g. `engine.query(Model, sql, params)`
 
 ## Migrations
 - consider https://martinfowler.com/articles/evodb.html

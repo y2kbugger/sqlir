@@ -43,6 +43,40 @@ class SqliteMaster(Row):
     name: str
 
 
+class Team_NameUpper(Row):
+    name: str
+    shout: str
+
+    __select_query__ = t"SELECT {Team.name}, upper({Team.name}) AS shout FROM {Team}"
+
+
+class Team_Info(Row):
+    cid: int
+    name: str
+    type: str
+    notnull: int
+    dflt_value: Any
+    pk: int
+
+    __select_query__ = t"PRAGMA table_info({Team})"
+
+
+class Team_MinSize(Row):
+    name: str
+    size: int
+
+    # the named parameter is supplied/overridden via the `params` arg
+    __select_query__ = t"SELECT {Team.name}, {Team.size} FROM {Team} WHERE {Team.size} >= :min_size"
+
+
+class Team_AvgSize(Row):
+    # the inner query names this column `avg(size)`, NOT `avg_size`; a target on
+    # `avg_size` must still resolve via the CTE column-name aliasing.
+    avg_size: float
+
+    __select_query__ = t"SELECT avg({Team.size}) FROM {Team}"
+
+
 def test_engine_connection(engine: Engine) -> None:
     hasattr(engine.connection, "cursor")
     hasattr(engine.connection, "execute")
@@ -226,6 +260,112 @@ def test_select__adhoc_model(engine: Engine) -> None:
     assert any(row.name == 'Team' for row in r)
 
 
+def test_select__select_query_model(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    rows = engine.select(Team_NameUpper, order="name").fetchall()
+
+    assert rows == [Team_NameUpper("Lions", "LIONS"), Team_NameUpper("Tigers", "TIGERS")]
+
+
+def test_select__select_query_model__order_limit_offset(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+    engine.insert(Team("Bears", 25))
+
+    rows = engine.select(Team_NameUpper, order="name", limit=1, offset=1).fetchall()
+
+    assert rows == [Team_NameUpper("Lions", "LIONS")]
+
+
+def test_select__select_query_model__pragma(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+
+    rows = engine.select(Team_Info).fetchall()
+
+    assert [r.name for r in rows] == ["id", "name", "size"]
+    assert rows[0].pk == 1
+
+
+def test_find__select_query_model(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+
+    assert engine.find(Team_NameUpper) == Team_NameUpper("Lions", "LIONS")
+
+
+def test_select__select_query_model__target(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    # target references the model's OWN output columns, not the source table.
+    rows = engine.select(Team_NameUpper, Team_NameUpper.shout == "LIONS").fetchall()
+
+    assert rows == [Team_NameUpper("Lions", "LIONS")]
+
+
+def test_select__select_query_model__target_with_order_limit(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+    engine.insert(Team("Lynx", 12))
+
+    rows = engine.select(Team_NameUpper, t"{Team_NameUpper.name} LIKE 'L%'", order="name", limit=1).fetchall()
+
+    assert rows == [Team_NameUpper("Lions", "LIONS")]
+
+
+def test_find__select_query_model__target(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    assert engine.find(Team_NameUpper, Team_NameUpper.name == "Tigers") == Team_NameUpper("Tigers", "TIGERS")
+
+
+def test_select__select_query_model__params(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    # the `params` arg flows through to the model-bound query's named parameter
+    rows = engine.select(Team_MinSize, None, {"min_size": 31}).fetchall()
+
+    assert rows == [Team_MinSize("Tigers", 33)]
+
+
+def test_find__select_query_model__params(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    assert engine.find(Team_MinSize, None, {"min_size": 31}) == Team_MinSize("Tigers", 33)
+
+
+def test_select__select_query_model__target_on_aggregated_column(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 40))
+
+    # avg(size) == 35; the field is `avg_size` even though the inner SQL names
+    # the column `avg(size)`. The CTE column-name list aliases it positionally,
+    # so a target on `avg_size` resolves reliably.
+    assert engine.select(Team_AvgSize, Team_AvgSize.avg_size > 25).fetchall() == [Team_AvgSize(35.0)]
+    assert engine.select(Team_AvgSize, Team_AvgSize.avg_size > 50).fetchall() == []
+
+
+def test_find__select_query_model__target_on_aggregated_column(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 40))
+
+    assert engine.find(Team_AvgSize, Team_AvgSize.avg_size > 25) == Team_AvgSize(35.0)
+
+
 @pytest.mark.parametrize(
     ("api_call", "expected_sql_statements"),
     [
@@ -258,9 +398,9 @@ def test_select__adhoc_model(engine: Engine) -> None:
             id="select",
         ),
         pytest.param(
-            lambda engine: engine.query(Team, "SELECT * FROM Team;"),
-            (r"^SELECT \* FROM Team;",),
-            id="query",
+            lambda engine: engine.select(Team_NameUpper),
+            (r"^SELECT Team\.name, upper\(Team\.name\) AS shout FROM Team",),
+            id="select-query-model",
         ),
         pytest.param(
             lambda engine: engine.update(Team, 1, name="Tigers"),
@@ -331,6 +471,45 @@ def test_query__datetime_param_is_adapted(engine: Engine) -> None:
     assert row is not None
     assert row.name == "launch"
     assert row.happened_at == ts
+
+
+def test_update__datetime_values_are_adapted(engine: Engine) -> None:
+    import datetime as dt
+
+    class Event(TableRow):
+        name: str
+        happened_at: dt.datetime
+
+    engine.ensure_table_created(Event)
+    old = dt.datetime(2024, 6, 15, 12, 0, 0)
+    new = dt.datetime(2025, 1, 1, 9, 0, 0)
+    engine.insert(Event("launch", old))
+
+    # both the target value AND the patch value are non-native (datetime) and
+    # must be adapted by the cursor on the way to SQLite.
+    changes = engine.update(Event, Event.happened_at == old, happened_at=new)
+
+    assert changes == 1
+    assert engine.find(Event, Event.name == "launch").happened_at == new
+
+
+def test_delete__datetime_target_value_is_adapted(engine: Engine) -> None:
+    import datetime as dt
+
+    class Event(TableRow):
+        name: str
+        happened_at: dt.datetime
+
+    engine.ensure_table_created(Event)
+    ts = dt.datetime(2024, 6, 15, 12, 0, 0)
+    engine.insert(Event("launch", ts))
+    engine.insert(Event("deploy", dt.datetime(2025, 1, 1, 9, 0, 0)))
+
+    # the non-native target value must be adapted for the WHERE comparison.
+    changes = engine.delete(Event, Event.happened_at == ts)
+
+    assert changes == 1
+    assert [r.name for r in engine.select(Event)] == ["deploy"]
 
 
 def test_save__on_success__inserts_record_to_db(engine: Engine) -> None:

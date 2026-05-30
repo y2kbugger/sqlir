@@ -52,6 +52,13 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 - **Ruff line length is 190.** Don't break long signatures for cosmetic reasons.
   Selected rule set is broad (`SLF`, `SIM`, `PTH`, `PD`, `ANN001`, `ANN201`,
   `RUF` ...); run `ruff check --fix` after edits.
+- **Keep docstrings lean, push the "why" local.** Especially for internal
+  helpers, the docstring should say *what* in a line or two; explain *why* a
+  given step exists with a short inline comment right next to that code (e.g.
+  `# Wrap the bound __select_query__ in a CTE, to allow further filtering`),
+  not in a long prose docstring. Prefer comments that track the code they
+  describe over docstrings that drift out of sync. AND of COURSE, prefer writing
+  code that doesn't require a comment at all.
 - **Type parameter naming:** use `type[R]` on APIs whose return type depends on
   the passed model (`find`, `select`, `query`); use the bare metaclass
   `RowMeta` for internal helpers that only need "a model class". See the
@@ -84,7 +91,18 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 - **Field 0 of a `TableRow` must be `id: int | None`** (`FieldZeroIdMalformed`
   / `FieldZeroIdRequired`).
 - **Table-model names may not contain `_`** — underscore is reserved for
-  alternate / ad-hoc model naming (`InvalidTableName`).
+  alternate / ad-hoc model naming (`InvalidTableName`). This check only applies
+  to `TableRow`; `Row` (ad-hoc) class names may contain underscores.
+- **`Row` models may define `__select_query__`** — a class attr (t-string or
+  plain `str`) that becomes the entire statement run by `select` / `find`.
+  `build_select_sql` in `sql.py` is the single select entry point for both kinds
+  of model: a plain model splices a `WHERE` directly, while a `__select_query__`
+  model uses its query as the row source and wraps it in a **CTE whose
+  column-name list aliases the query's output columns positionally to the
+  model's field names** when `order`/`limit`/`offset` **or** a relational
+  `target` is applied — so a `target` references the model's own field names
+  reliably (e.g. `TopScores.score > 5`, or `AvgScore.avg_score > 5` even when the
+  inner query is `SELECT avg(score)`). Banned on `TableRow` (`SelectQueryNotAllowedOnTableRow`).
 - **FK fields must be `Model | None`** — unions with other concrete types are
   not supported.
 - **`Row` (no `id`) cannot be used with `find`/`update`/`delete`** — those
@@ -124,3 +142,11 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
     to read, hard to iterate on, and hard for the user to follow. The
     `scratch.*` prefix is gitignored / understood to be throwaway.
 - When trying to fix a BUG always first try to reproduce it with a minimal pytest case. This helps explore the problem, verify the cause, verify the fix, and prevents regressions.
+- Naturally pick up on **anti-patterns** as you work: when you (or the user) hit
+    a tempting-but-wrong usage — calling private plumbing like `engine._query`,
+    embedding values via a t-string closure, etc. — add it to the *Anti-Patterns*
+    section of [example.ipynb](example.ipynb) without being asked. Mirror the
+    existing cell quartet: a markdown cell explaining *why* it's wrong (with a
+    fenced bad example), a code cell that runs the anti-pattern, a `**Recommended:**`
+    markdown cell, then a code cell with the fix. Treat each rough edge you smooth
+    over as a candidate anti-pattern, the same way you codify conventions here.

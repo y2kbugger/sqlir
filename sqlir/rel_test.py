@@ -18,7 +18,7 @@ def test_ast_generation():
     expr = Employee.name == "Alice"
     assert isinstance(expr, BinaryExpr)
     assert isinstance(expr.left, FieldExpr)
-    assert expr.left._name == "name"  # noqa: SLF001
+    assert expr.left._name == "name"
     assert expr.op == "=="
     assert expr.right == "Alice"
 
@@ -26,7 +26,7 @@ def test_ast_generation():
     expr2 = Employee.department.name == "HR"
     assert isinstance(expr2, BinaryExpr)
     assert isinstance(expr2.left, FieldExpr)
-    assert expr2.left._name == "department.name"  # noqa: SLF001
+    assert expr2.left._name == "department.name"
     assert expr2.op == "=="
 
     # Test logical combinations
@@ -41,7 +41,7 @@ def test_id_shortcut():
     expr = Employee.Id(42)
     assert isinstance(expr, BinaryExpr)
     assert isinstance(expr.left, FieldExpr)
-    assert expr.left._name == "id"  # noqa: SLF001
+    assert expr.left._name == "id"
     assert expr.op == "=="
     assert expr.right == 42
 
@@ -61,20 +61,20 @@ def test_defaulted_field_access_returns_fieldexpr():
 
     # pk id has a default of None on TableRow
     assert isinstance(WithDefaults.id, FieldExpr)
-    assert WithDefaults.id._name == "id"  # noqa: SLF001
+    assert WithDefaults.id._name == "id"
 
     id_expr = WithDefaults.id == 5
     assert isinstance(id_expr, BinaryExpr)
-    assert id_expr.left._name == "id"  # noqa: SLF001
+    assert id_expr.left._name == "id"
     assert id_expr.right == 5
 
     # nullable field with an explicit default
     assert isinstance(WithDefaults.score, FieldExpr)
-    assert WithDefaults.score._name == "score"  # noqa: SLF001
+    assert WithDefaults.score._name == "score"
 
     score_expr = WithDefaults.score > 99.95
     assert isinstance(score_expr, BinaryExpr)
-    assert score_expr.left._name == "score"  # noqa: SLF001
+    assert score_expr.left._name == "score"
 
 
 def test_unknown_field_raises_attribute_error():
@@ -86,13 +86,13 @@ def test_chained_fk_access_valid():
     # ``department`` is a FK to Department, ``name`` is a field on Department
     expr = Employee.department.name
     assert isinstance(expr, FieldExpr)
-    assert expr._name == "department.name"  # noqa: SLF001
-    assert expr._model is Employee  # noqa: SLF001
+    assert expr._name == "department.name"
+    assert expr._model is Employee
 
     # ``id`` is inherited from TableRow
     expr_id = Employee.department.id
     assert isinstance(expr_id, FieldExpr)
-    assert expr_id._name == "department.id"  # noqa: SLF001
+    assert expr_id._name == "department.id"
 
 
 def test_chained_fk_access_unknown_field_raises():
@@ -125,7 +125,7 @@ def test_chained_access_validates_against_fk_target_not_root():
     # but not on Child, so it must be rejected on the chain.
     expr = Parent.child.child_only
     assert isinstance(expr, FieldExpr)
-    assert expr._name == "child.child_only"  # noqa: SLF001
+    assert expr._name == "child.child_only"
 
     with pytest.raises(AttributeError, match=r"Child.*parent_only"):
         Parent.child.parent_only  # noqa: B018

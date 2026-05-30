@@ -51,7 +51,6 @@ class Engine:
 
     def find(self, Model: type[M], target, params=None, /, *, order=None) -> M: ...
     def select(self, Model: type[M], target=None, params=None, /, *, order=None, limit=None, offset=None) -> TypedCursorProxy[M]: ...
-    def query(self, Model: type[M], sql: str, parameters: Sequence | dict | None = None) -> TypedCursorProxy[M]: ...
 
     def update(self, Model: type[TableRow], target, params=None, /, **patch) -> int: ...
     def delete(self, Model: type[TableRow], target, params=None, /) -> int: ...
@@ -66,9 +65,6 @@ class Engine:
       ...
   rows = engine.select(Post).fetchall()               # materialize all
   ```
-- `query` is the **raw-SQL escape hatch**: pass a SQL string (+ optional
-  `Sequence | dict` parameters) and get back a `TypedCursorProxy[M]`. For
-  model-relation filtering use `select` / `find`.
 - `update` / `delete` return the number of affected rows; `target=None`
   is a no-op (returns `0`).
 - `insert` is for `TableRow` only and returns the inserted row with `id`
@@ -83,6 +79,35 @@ class Engine:
   engine.select(Post, pred, {"min_score": 50})
   engine.select(Post, pred, {"min_score": 90})
   ```
+
+### `__select_query__` — model-bound queries
+
+A `Row` model may set `__select_query__` to bake an entire SQL statement onto
+the model; `engine.select` / `engine.find` then run that query instead of
+generating a `SELECT`. The model becomes a typed, reusable result shape for any
+query — aggregations, custom joins, `PRAGMA`, `UNION`, SQLite-specific
+functions, etc. Columns map **positionally**, so they can be named anything.
+
+```python
+class TopScores(Row):
+    name: str
+    score: float
+
+    __select_query__ = t"SELECT {Post.name}, {Post.score} FROM {Post}"
+
+engine.select(TopScores, order="score DESC", limit=3)
+```
+
+- The value is a **t-string** (field references lowered to SQL) or a plain
+  `str` for fixed SQL such as `t"PRAGMA table_info({Post})"`.
+- `target`, `order`, `limit`, and `offset` still apply — the query is wrapped in
+  a CTE that aliases its output columns positionally to the model's field names,
+  so a `target` references those field names regardless of how the inner query
+  named them (e.g. `engine.find(AvgScore, AvgScore.avg_score > 5)` over
+  `SELECT avg({Post.score})`). A `PRAGMA` query can't be wrapped, so
+  `target`/`order`/`limit` are unavailable on PRAGMA-style models.
+- Only allowed on `Row` models; declaring it on a `TableRow` raises
+  `SelectQueryNotAllowedOnTableRow`.
 
 ## API Comparison
 
@@ -110,8 +135,8 @@ class Engine:
 |   | Select by relation                     | `engine.select(Post, Post.name == "Hi")`                            | `Post.where(name: "Hi").all`                                     |
 |   | Select with order/limit/offset         | `engine.select(Post, ..., order="name", limit=10, offset=20)`       | `Post.where(...).order(...).limit(...).offset(...)`              |
 |   | Streaming cursor                       | `for r in engine.select(Post, Post.name == "Hi"): ...`              | `Post.where(...).find_each`                                      |
-|   | Raw SQL                                | `engine.query(Model, sql, params)`                                  | `Model.find_by_sql(sql)`                                         |
-|   | Aggregations                           | raw SQL / VIEW with `Row` models (views + migrate work well)        | `Model.group(...).sum(...)`                                      |
+|   | Raw SQL                                | `Row` + `__select_query__`, then `engine.select(QueryModel)`        | `Model.find_by_sql(sql)`                                         |
+|   | Aggregations                           | `__select_query__` / VIEW with `Row` models (views + migrate work well) | `Model.group(...).sum(...)`                                  |
 | * | Exists                                 | —                                                                   | `Post.where(name: "Hi").exists?`                                 |
 | * | Pluck (scalar columns)                 | —                                                                   | `Post.pluck(:name)`                                              |
 | * | Take (first N)                         | `engine.select(Post, limit=N)`                                      | `Post.take(N)`                                                   |
@@ -149,12 +174,8 @@ Rows prefixed with `*` are not implemented; see [TODO.md](TODO.md) for status.
 ## Model Types
 
 - **table model** — Backed by a table in the database. Subclass `TableRow`.
-- **alt model** — Backed by a view in the database, but could have fields that
-  are added (eventually), removed, or modified. Still has an `id` field that
-  maps back to the original table.
 - **adhoc model** — Backed by any arbitrary query. Has no `id` field and can
-  have any fields. Subclass `Row`.
-- **nontable model** — an *alt model* or an *adhoc model*.
+  have any fields. Subclass `Row`. Could have a manually assigned table which is a view.
 
 ## Joins
 

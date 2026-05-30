@@ -11,7 +11,7 @@ from textwrap import dedent
 from typing import Any
 
 # NOTE: sql.py should only depend on .model and .sql_rel — never .engine or .query.
-from .model import RowMeta, TableRow
+from .model import RowMeta, TableRow, has_select_query
 from .sql_rel import compile_expr
 
 # ---------------------------------------------------------------------------
@@ -19,11 +19,15 @@ from .sql_rel import compile_expr
 # ---------------------------------------------------------------------------
 
 
-def _append_where(sql: str, target: Any, params: dict[str, Any]) -> str:
-    """Append a `WHERE <clause>` compiled from `target` to `sql`, mutating `params`."""
+def _append_where(sql: str, target: Any, params: dict[str, Any], start_idx: int = 0) -> str:
+    """Append a `WHERE <clause>` compiled from `target` to `sql`, mutating `params`.
+
+    `start_idx` seeds the generated `p<idx>` parameter names so a wrapped
+    `__select_query__` can avoid colliding with the inner query's bound params.
+    """
     if target is None:
         return sql
-    where_clause, _ = compile_expr(target, params)
+    where_clause, _ = compile_expr(target, params, start_idx)
     if where_clause:
         sql += f"\nWHERE {where_clause}"
     return sql
@@ -76,10 +80,23 @@ def build_select_sql(
     limit: int | None = None,
     offset: int | None = None,
 ) -> str:
-    """Assemble a full `SELECT` for `Model`, splicing a WHERE clause compiled from `target`."""
+    """Assemble a full `SELECT` for `Model`."""
     if params is None:
         params = {}
-    sql = _append_where(_select_clause(Model), target, params)
+
+    # Add WHERE clause
+    if has_select_query(Model):
+        # Wrap the bound `__select_query__` in a CTE, to allow further filtering
+        base, bound, next_idx = _lower_select_query(Model)
+        params.update(bound)
+        if target is None and order is None and limit is None and offset is None:
+            return base
+        alias = Model.__tablename__
+        cols = ", ".join(f.name for f in Model.__fields__)
+        sql = _append_where(f"WITH {alias}({cols}) AS (\n{base}\n)\nSELECT * FROM {alias}", target, params, next_idx)
+    else:
+        sql = _append_where(_select_clause(Model), target, params)
+
     separator = "\n" if "\n" in sql else " "
     if order:
         sql += f"{separator}ORDER BY {order}"
@@ -90,6 +107,24 @@ def build_select_sql(
     if offset is not None:
         sql += f"{separator}OFFSET {offset}"
     return sql
+
+
+@cache
+def _lower_select_query(Model: RowMeta) -> tuple[str, tuple[tuple[str, Any], ...], int]:
+    """Lower a model's `__select_query__` (t-string or plain str) to SQL + bound params.
+
+    Returns the SQL text, the bound params as items, and the next free
+    `p<idx>` parameter index (so a wrapping WHERE can avoid name collisions).
+
+    This is a good caching point, since the bound SQL is reusable across all calls to `find`/`select`
+    """
+    raw = Model.__select_query__
+    # PEP 750 t-string: lower model/field interpolations to SQL via sql_rel.
+    if hasattr(raw, "interpolations") and hasattr(raw, "strings"):
+        bound: dict[str, Any] = {}
+        sql, next_idx = compile_expr(raw, bound)
+        return dedent(sql).strip(), tuple(bound.items()), next_idx
+    return dedent(str(raw)).strip(), (), 0
 
 
 # ---------------------------------------------------------------------------

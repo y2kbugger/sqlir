@@ -7,12 +7,15 @@ from .engine import Engine
 from .model import (
     AnyTypeNotAllowedOnTableRow,
     FieldZeroIdMalformed,
+    InvalidTableName,
     ModelField,
     Row,
+    SelectQueryNotAllowedOnTableRow,
     TableModelInheritanceError,
     TableRow,
     _sql_columndef,
     _unwrap_optional_type,
+    has_select_query,
     is_tablerow_model,
     schematype,
 )
@@ -331,6 +334,55 @@ def test_meta__model_id_not_optional() -> None:
         class TBadID(TableRow):
             id: int  # id is not optional - override causes kw_only conflict
             name: str
+
+
+def test_meta__select_query__allowed_on_row_model() -> None:
+    """`Row` (ad-hoc) models may define `__select_query__` as an arbitrary-SQL escape hatch."""
+
+    class Widget(TableRow):
+        name: str
+
+    class Widget_Shout(Row):
+        name: str
+        shout: str
+
+        __select_query__ = t"SELECT {Widget.name}, upper({Widget.name}) AS shout FROM {Widget}"
+
+    assert has_select_query(Widget_Shout)
+    assert not has_select_query(Widget)
+    # Underscores in the class name are allowed on ad-hoc Row models.
+    assert Widget_Shout.__fields__[0].name == "name"
+
+
+def test_meta__select_query__banned_on_table_model() -> None:
+    """`__select_query__` is meaningless on a table model and is rejected at compile time."""
+
+    class Gadget(TableRow):
+        name: str
+
+        __select_query__ = t"SELECT 1"
+
+    with pytest.raises(SelectQueryNotAllowedOnTableRow):
+        _ = Gadget.__fields__
+
+
+def test_meta__underscore_class_name_banned_on_table_model() -> None:
+    """Underscores remain reserved for ad-hoc models, so table models still reject them."""
+
+    class Bad_Table(TableRow):
+        name: str
+
+    with pytest.raises(InvalidTableName):
+        _ = Bad_Table.__fields__
+
+
+def test_meta__underscore_class_name_allowed_on_row_model() -> None:
+    """Underscores are allowed in ad-hoc Row models."""
+
+    class AdHoc_Model(Row):
+        name: str
+
+    _ = AdHoc_Model.__fields__
 
 
 def test_table_meta___related_model() -> None:
