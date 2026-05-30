@@ -1,7 +1,6 @@
 # WIP
 
 # Bugs
-- if migration fails in the middle of a migration but before the bookkeeping, then we could fail with a partially applied migration and it wouldn't know to roll back or try again. We should probably have a way to detect this and roll back or try again on the next run. (or during error handling itself, but that might be risky)
 
 
 # Testing
