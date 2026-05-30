@@ -188,6 +188,27 @@ def test_meta__valid_table_model() -> None:
     )
 
 
+def test_meta__extra_methods_and_properties_are_not_treated_as_fields() -> None:
+    class Person(TableRow):
+        first: str
+        last: str
+
+        @property
+        def full_name(self) -> str:
+            return f"{self.first} {self.last}"
+
+        def upper_name(self) -> str:
+            return self.full_name.upper()
+
+    assert [field.name for field in Person.__fields__] == ["id", "first", "last"]
+    assert isinstance(Person.full_name, property)
+
+    person = Person(first="Ada", last="Lovelace")
+
+    assert person.full_name == "Ada Lovelace"
+    assert person.upper_name() == "ADA LOVELACE"
+
+
 def test_meta__default_tablename__tracks_renamed_class_until_first_compile() -> None:
     class ModelA(TableRow):
         name: str
