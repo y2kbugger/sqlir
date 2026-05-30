@@ -164,7 +164,6 @@ class Engine:
         return self._query(Model, sql, compiled_params)
 
     def _query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict | None = ()) -> TypedCursorProxy[R]:
-        """Execute raw SQL and return a typed cursor for `Model`"""
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 

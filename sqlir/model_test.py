@@ -210,14 +210,18 @@ def test_meta__row_model_can_subclass_another_row_model_and_query(engine: Engine
         one: int
         two: int
 
+        __select_query__ = "SELECT 1 AS one, 2 AS two"
+
     class SubRow(BaseRow):
         three: int
+
+        __select_query__ = "SELECT 1 AS one, 2 AS two, 3 AS three"
 
     assert [field.name for field in BaseRow.__fields__] == ["one", "two"]
     assert [field.name for field in SubRow.__fields__] == ["one", "two", "three"]
 
-    base_row = engine._query(BaseRow, "SELECT 1 as one, 2 as two;").fetchone()
-    sub_row = engine._query(SubRow, "SELECT 1 as one, 2 as two, 3 as three;").fetchone()
+    base_row = engine.find(BaseRow)
+    sub_row = engine.find(SubRow)
 
     assert base_row == BaseRow(1, 2)
     assert sub_row == SubRow(1, 2, 3)

@@ -86,7 +86,7 @@ ignore = ["TD001", "TD002", "TD003", "SIM105", "PD010", "PD002", "PD008", "FIX00
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = [
     "F811",   # pytest fixture re-imports look like redefinitions
-    "SLF001", # tests may exercise the private `engine._query` raw-SQL foundation
+    "SLF001", # tests inspect private internals (e.g. `FieldExpr._name`)
 ]
 
 

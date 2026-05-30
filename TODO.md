@@ -1,6 +1,4 @@
 # WIP
-- rework all usage of e._query instance to use __select_query__ paradigm instead. think docs/tests/etc i think example is already convert, save for the demo in anti-pattern.
-- Deprecate _query in docs, and examples.
 - Rework API.md
 
 # Bugs
@@ -197,6 +195,7 @@ https://docs.datomic.com/datomic-overview.html
 - Ror-like scopes???
 - FinalizedModel: disable lazy loading of fields, etc. e.g. guarantee immutability before passing to template etc. (needs better name i think)
 - Scalar model type, e.g. RowMeta that is only allow to have a single field, and returns an unwrapped scalar value. (not sure this would work within the static typing.
+- Raw execute escape hatch that returns untyped dicts instead of model instances. This would be for queries that don't fit the model paradigm at all, e.g. arbitrary joins, aggregations, CTEs, etc. This is basically the same as the current _query method, but with a better name and docs that make it clear this is an escape hatch for when the model-based API doesn't fit the use case. Can also be used for statements that mutate data also.
 
 
 ## engine.upsert

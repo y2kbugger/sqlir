@@ -36,6 +36,12 @@ class AdHoc(Row):
     score: float
 
 
+class AdHoc_Score(Row):
+    score: float
+
+    __select_query__ = "SELECT 7.7 AS score"
+
+
 class SqliteMaster(Row):
     __tablename__ = "sqlite_master"
     type: str
@@ -434,26 +440,28 @@ def test_engine_crud_calls__emit_only_expected_sql_statements(
         assert re.search(pattern, re.sub(r"\s+", " ", statement).strip()), statement
 
 
-def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
+def test_select__table_model__returns_cursor_proxy(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.insert(Team("Lions", 30))
 
-    cur = engine._query(Team, "SELECT * FROM Team;")
+    cur = engine.select(Team)
+    assert isinstance(cur, apsw.Cursor)
 
     row = cur.fetchone()
     assert isinstance(row, Team)
     assert row == Team("Lions", 30, id=1)
 
 
-def test_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
-    cur = engine._query(AdHoc, "SELECT 7.7 as score;")
+def test_select__adhoc_select_query_model__returns_cursor_proxy(engine: Engine) -> None:
+    cur = engine.select(AdHoc_Score)
+    assert isinstance(cur, apsw.Cursor)
 
     row = cur.fetchone()
-    assert isinstance(row, AdHoc)
-    assert row == AdHoc(7.7)
+    assert isinstance(row, AdHoc_Score)
+    assert row == AdHoc_Score(7.7)
 
 
-def test_query__datetime_param_is_adapted(engine: Engine) -> None:
+def test_find__datetime_target_is_adapted(engine: Engine) -> None:
     import datetime as dt
 
     class Event(TableRow):
@@ -465,10 +473,8 @@ def test_query__datetime_param_is_adapted(engine: Engine) -> None:
     engine.insert(Event("launch", ts))
     engine.insert(Event("deploy", dt.datetime(2025, 1, 1, 9, 0, 0)))
 
-    cur = engine._query(Event, "SELECT * FROM Event WHERE happened_at = ?", (ts,))
-    row = cur.fetchone()
+    row = engine.find(Event, Event.happened_at == ts)
 
-    assert row is not None
     assert row.name == "launch"
     assert row.happened_at == ts
 
@@ -556,7 +562,7 @@ def test_save__related_model(engine: Engine) -> None:
     team = engine.insert(Team("Lions", 5))
     person = engine.insert(Person("Alice", team))
 
-    row = engine._query(Person, "SELECT * FROM Person;").fetchone()
+    row = engine.find(Person)
     assert row is not None
     assert row == person
 
@@ -579,7 +585,7 @@ def test_save__three_model_relation_chain(engine: Engine) -> None:
     person = engine.insert(Person("Alice", team))
     arm = engine.insert(Arm(30.0, person))
 
-    row = engine._query(Arm, "SELECT * FROM Arm;").fetchone()
+    row = engine.find(Arm)
     assert row == arm
 
 
@@ -595,7 +601,7 @@ def test_save__null_relation(engine: Engine) -> None:
 
     person = engine.insert(B(None))
 
-    row = engine._query(B, "SELECT * FROM B;").fetchone()
+    row = engine.find(B)
     assert row is not None
     assert row == person
 

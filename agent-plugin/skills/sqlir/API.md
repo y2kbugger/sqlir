@@ -58,7 +58,7 @@ class Engine:
     def delete(self, Model: type[TableRow], target, params=None, /) -> int: ...
 ```
 
-- `find` raises `RecordNotFoundError` when nothing matches.
+- `find` raises `RecordNotFoundError` when nothing matches. If you ever _find_ yourself useing fetchone, you probably want `find` instead.
 - `select` returns a `TypedCursorProxy[M]`. The cursor is **iterable** (yields
   model instances) for streaming, and exposes the usual apsw methods
   (`fetchone`, `fetchall`, `fetchmany`). `target=None` selects all rows.
