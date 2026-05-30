@@ -20,10 +20,11 @@ from .model import RowConverter, RowMeta, is_tablerow_model, native_columntypes
 logger = logging.getLogger(__name__)
 
 
-def _is_unquoted_msgspec_type(t: type | Any) -> bool:
-    """When adapting/converting these as root values, we don't want them to be
+def _is_type_handled_by_msgspec(t: type | Any) -> bool:
+    """When adapting/converting these as root values, we want them to be exactly
+    consistent with msgspec serializations, but don't want them to be
     quoted. This will let SQLite operate on them natively, e.g. for datetime
-    comparisons, or for enums to be stored as their int value instead of a JSON string."""
+    comparisons, or for `Enums` to be stored as their `int` value instead of a JSON string."""
     try:
         return issubclass(t, (dt.datetime, dt.date, dt.time, Decimal, enum.Enum, uuid.UUID))
     except TypeError:
@@ -39,7 +40,7 @@ def adapt_value(value: Any) -> apsw.SQLiteValue:
     if typ is bool:
         return int(value)
 
-    if _is_unquoted_msgspec_type(typ):
+    if _is_type_handled_by_msgspec(typ):
         return msgspec.to_builtins(value)
 
     if isinstance(value, (bytearray, memoryview)):
@@ -65,7 +66,7 @@ def make_converter_for_model(Model: RowMeta) -> RowConverter:
     fields = Model.__fields__
 
     # -- build converter via exec -------------------------------------------
-    ns: dict[str, Any] = {"msgspec": msgspec, "_dt": dt.datetime, "_date": dt.date, "_time": dt.time, "_Decimal": Decimal}
+    ns: dict[str, Any] = {"msgspec": msgspec}
     parts: list[str] = []
 
     for i, field in enumerate(fields):
@@ -93,12 +94,12 @@ def make_converter_for_model(Model: RowMeta) -> RowConverter:
         elif field.type is memoryview:
             parts.append(f'memoryview(r[{i}]) if r[{i}] is not None else None')
 
-        elif _is_unquoted_msgspec_type(field.type):
+        elif _is_type_handled_by_msgspec(field.type):
             cname = f'_t{i}'
             ns[cname] = field.type
             parts.append(f'msgspec.convert(r[{i}], type={cname}) if r[{i}] is not None else None')
 
-        # Fallback to Msgspec
+        # Fallback to msgspec json
         else:
             cname = f'_t{i}'
             ns[cname] = field.type

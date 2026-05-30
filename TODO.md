@@ -41,7 +41,6 @@ All of these need test cases (or need it verified that a test already exists), e
     - maybe resurect some of the old benchmarks for this.
 
 # Next
-- UUID should be supported natively without JSON quoting as root type (like date, Decimal, etc) so db can use it directly
 - make rel template strings easily print as their resolved SQL for debugging
 - migration interactive restore list too long. can you page restores or head results?
 

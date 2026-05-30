@@ -1,5 +1,6 @@
 import datetime as dt
 import enum
+import uuid
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -189,6 +190,28 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
     returned_row = engine.find(T, T.Id(row.id))
 
     assert returned_row.date == today
+
+
+def test_can_store_and_retrieve_uuid_as_unquoted_text(engine: Engine) -> None:
+    class T(TableRow):
+        value: uuid.UUID
+
+    engine.ensure_table_created(T)
+    expected = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    row = engine.insert(T(expected))
+
+    returned_row = engine.find(T, T.Id(row.id))
+    assert returned_row.value == expected
+
+    cur = engine.connection.cursor()
+    cur.execute("SELECT typeof(value), value FROM T WHERE id = ?", (row.id,))
+    raw = cur.fetchone()
+    assert raw == ("text", str(expected))
+
+    cur.execute(f"SELECT COUNT(*) FROM T WHERE value = '{expected}'")
+    literal_match = cur.fetchone()
+    assert literal_match is not None
+    assert literal_match[0] == 1
 
 
 def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
@@ -409,6 +432,7 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
     """
     import dataclasses
     import datetime as dt
+    import uuid
     from decimal import Decimal
     from enum import Enum
 
@@ -432,24 +456,35 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
         f_val: float
         s_val: str
         b: bool
-        # Datetimes
-        dt_val: dt.datetime
-        d_val: dt.date
-        t_val: dt.time
         # Buffers
         by_val: bytes
         ba_val: bytearray
         mv_val: memoryview
-        # msgspec Fallbacks
+        # msgspec scalars: datetimes
+        dt_val: dt.datetime
+        d_val: dt.date
+        t_val: dt.time
+        # msgspec scalars: decimal / uuid
+        dec_val: Decimal
+        uuid_val: uuid.UUID
+        # msgspec scalars: enums
+        enum_val: Color
+        int_enum_val: Priority
+        # msgspec JSON - simple
         dict_val: dict
         list_val: list
-        enum_val: Color
-        custom_val: MyDC
-        dec_val: Decimal
         set_val: set[str]
         tuple_val: tuple[int, str]
         dict_simple_val: dict[str, int]
-        int_enum_val: Priority
+        custom_val: MyDC
+        # msgspec JSON - msgspec-handled scalars nested in a list (to confirm they are encoded as JSON strings, not quoted as literals)
+        dt_list: list[dt.datetime]
+        d_list: list[dt.date]
+        t_list: list[dt.time]
+        dec_list: list[Decimal]
+        uuid_list: list[uuid.UUID]
+        enum_list: list[Color]
+        int_enum_list: list[Priority]
 
     engine.ensure_table_created(AllTypesModel)
     eastern_tz = dt.timezone(dt.timedelta(hours=-4))
@@ -461,24 +496,35 @@ def test_comprehensive_sidechannel_storage_types_and_roundtrips(engine: Engine) 
         ("f_val", 3.14, "real", 3.14, 3.14),
         ("s_val", "hello", "text", "hello", "hello"),
         ("b", True, "integer", 1, True),
-        # Datetimes (Natively stored as unquoted strings)
-        ("dt_val", dt.datetime(2024, 6, 15, 12, 0, 0, tzinfo=eastern_tz), "text", "2024-06-15T12:00:00-04:00", "2024-06-15T12:00:00-04:00"),
-        ("d_val", dt.date(2024, 6, 15), "text", "2024-06-15", "2024-06-15"),
-        ("t_val", dt.time(12, 0, 0), "text", "12:00:00", "12:00:00"),
-        # Buffers (Natively stored as blobs)
+        # Buffers
         ("by_val", b"raw_bytes", "blob", b"raw_bytes", "cmF3X2J5dGVz"),
         ("ba_val", bytearray(b"byte_array"), "blob", b"byte_array", "Ynl0ZV9hcnJheQ=="),
         ("mv_val", memoryview(b"memory_view"), "blob", b"memory_view", "bWVtb3J5X3ZpZXc="),
-        # Msgspec JSON fallbacks
+        # msgspec scalars: datetimes
+        ("dt_val", dt.datetime(2024, 6, 15, 12, 0, 0, tzinfo=eastern_tz), "text", "2024-06-15T12:00:00-04:00", "2024-06-15T12:00:00-04:00"),
+        ("d_val", dt.date(2024, 6, 15), "text", "2024-06-15", "2024-06-15"),
+        ("t_val", dt.time(12, 0, 0), "text", "12:00:00", "12:00:00"),
+        # msgspec scalars: decimal / uuid
+        ("dec_val", Decimal("123.45"), "text", "123.45", "123.45"),
+        ("uuid_val", uuid.UUID("12345678-1234-5678-1234-567812345678"), "text", "12345678-1234-5678-1234-567812345678", "12345678-1234-5678-1234-567812345678"),
+        # msgspec scalars: enums
+        ("enum_val", Color.RED, "text", "red", "red"),
+        ("int_enum_val", Priority.HIGH, "integer", 2, 2),  # int enums use msgspec.to_builtins and map to INTEGER
+        # msgspec JSON - simple
         ("dict_val", {"key": "value"}, "text", '{"key":"value"}', {"key": "value"}),
         ("list_val", [1, 2, 3], "text", '[1,2,3]', [1, 2, 3]),
-        ("enum_val", Color.RED, "text", "red", "red"),
-        ("custom_val", MyDC(name="test"), "text", '{"name":"test"}', {"name": "test"}),
-        ("dec_val", Decimal("123.45"), "text", "123.45", "123.45"),
         ("set_val", {"single_item"}, "text", '["single_item"]', ["single_item"]),
         ("tuple_val", (1, "two"), "text", '[1,"two"]', (1, "two")),
         ("dict_simple_val", {"k": 5}, "text", '{"k":5}', {"k": 5}),
-        ("int_enum_val", Priority.HIGH, "integer", 2, 2),  # int enums use msgspec.to_builtins and map to INTEGER
+        ("custom_val", MyDC(name="test"), "text", '{"name":"test"}', {"name": "test"}),
+        # msgspec JSON - msgspec-handled scalars nested in a list (to confirm they are encoded as JSON strings, not quoted as literals)
+        ("dt_list", [dt.datetime(2024, 6, 15, 12, 0, 0, tzinfo=eastern_tz)], "text", '["2024-06-15T12:00:00-04:00"]', ["2024-06-15T12:00:00-04:00"]),
+        ("d_list", [dt.date(2024, 6, 15)], "text", '["2024-06-15"]', ["2024-06-15"]),
+        ("t_list", [dt.time(12, 0, 0)], "text", '["12:00:00"]', ["12:00:00"]),
+        ("dec_list", [Decimal("123.45")], "text", '["123.45"]', ["123.45"]),
+        ("uuid_list", [uuid.UUID("12345678-1234-5678-1234-567812345678")], "text", '["12345678-1234-5678-1234-567812345678"]', ["12345678-1234-5678-1234-567812345678"]),
+        ("enum_list", [Color.RED], "text", '["red"]', ["red"]),
+        ("int_enum_list", [Priority.HIGH], "text", '[2]', [2]),
     ]
 
     # Save to db
