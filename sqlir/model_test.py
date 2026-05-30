@@ -4,6 +4,7 @@ from typing import NamedTuple, Optional, Union
 import pytest
 
 from .model import (
+    AnyTypeNotAllowedOnTableRow,
     FieldZeroIdMalformed,
     ModelField,
     Row,
@@ -217,6 +218,48 @@ def test_meta__custom_tablename__not_a_field() -> None:
     field_names = [f.name for f in MyModel.__fields__]
     assert "__tablename__" not in field_names
     assert field_names == ["id", "name"]
+
+
+def test_meta__any_type_banned_on_table_model() -> None:
+    """`Any` has no storage/schema/affinity, so it cannot back a column on a table model."""
+    from typing import Any
+
+    class TWithAny(TableRow):
+        name: str
+        payload: Any
+
+    with pytest.raises(AnyTypeNotAllowedOnTableRow):
+        _ = TWithAny.__fields__
+
+
+def test_meta__optional_any_type_banned_on_table_model() -> None:
+    """`Any | None` collapses to `Any`, which is still banned on a table model."""
+    from typing import Any
+
+    class TWithOptionalAny(TableRow):
+        name: str
+        payload: Any | None
+
+    with pytest.raises(AnyTypeNotAllowedOnTableRow):
+        _ = TWithOptionalAny.__fields__
+
+
+def test_meta__any_type_allowed_on_row_model() -> None:
+    """`Any` is allowed on ad-hoc `Row` models; it passes the raw value through unconverted."""
+    from typing import Any
+
+    class AdHoc(Row):
+        name: str
+        payload: Any
+
+    # Compilation succeeds and the converter passes the raw value through.
+    fields = AdHoc.__fields__
+    assert fields[1].name == "payload"
+    assert fields[1].type is Any
+
+    convert = AdHoc.__converter__
+    # `Any` is pass-through: a pre-decoded value is returned untouched, not re-parsed.
+    assert convert(("bart", b"raw-bytes")) == ("bart", b"raw-bytes")
 
 
 def test_meta__model_malformed_id_raises() -> None:

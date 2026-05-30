@@ -193,6 +193,16 @@ On top of those, sqlir handles the following types automatically:
 Any other type that msgspec can serialize is stored as JSON. If msgspec cannot
 serialize the type, it raises at write time.
 
+### `Any`
+
+`Any` is **banned on table models** (`TableRow`): it has no storage/schema/SQL
+type or affinity, so there is no sensible column to create. Declaring an `Any`
+field on a `TableRow` raises `AnyTypeNotAllowedOnTableRow` at compile time.
+
+`Any` **is allowed on ad-hoc `Row` models**, where it means "pass the raw
+SQLite value through unconverted" — no adaptation on the way in, no conversion
+on the way out.
+
 ### A note on datetime storage and SQLite date functions
 
 Complex types like `list`, `dict`, and `dataclass` are stored as **JSON TEXT**

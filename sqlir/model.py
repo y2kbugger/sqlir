@@ -151,6 +151,14 @@ class RowMeta(type):
         full_types = tuple(annotations.values())
         unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
 
+        # `Any` has no storage/schema/affinity, so it cannot back a column on a
+        # table model. It is allowed on `Row` (ad-hoc/view-shaped) models, where
+        # it just means "pass the raw SQLite value through without converting".
+        if is_tablerow_model(cls):
+            for fieldname, (_, FieldType) in zip(fieldnames, unwrapped_types, strict=False):
+                if FieldType is Any:
+                    raise AnyTypeNotAllowedOnTableRow(cls.__name__, fieldname)
+
         fields = tuple(
             ModelField(
                 name=fieldname,
@@ -243,6 +251,14 @@ class FieldZeroIdMalformed(ModelDefinitionError):
 class InvalidTableName(ModelDefinitionError):
     def __init__(self, table_name: str) -> None:
         super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for alternate models.")
+
+
+class AnyTypeNotAllowedOnTableRow(ModelDefinitionError):
+    def __init__(self, model_name: str, field_name: str) -> None:
+        super().__init__(
+            f"Field `{field_name}` of table model `{model_name}` is typed `Any`, which has no storage/schema/SQL type or affinity. "
+            f"`Any` is only allowed on `Row` (ad-hoc) models, where it passes the raw SQLite value through unconverted.",
+        )
 
 
 native_columntypes: dict[type, str] = {

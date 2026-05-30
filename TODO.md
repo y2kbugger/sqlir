@@ -5,7 +5,6 @@
 
 # Testing
 All of these need test cases (or need it verified that a test already exists), either to capture and preserve existing behavior, or to define and enforce new behavior. Some of these are also more like "decisions to make", the codify with tests.
-- test `Any` type on Row/TableRow models. Ban? Allow?
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
 - test that you can register a model with an FK that doesn exitst yet. Also test failure to actually evetually define it
 - Test case that you cannot subclass a tablemodel, e.g.
