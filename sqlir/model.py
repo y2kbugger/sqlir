@@ -13,9 +13,34 @@ from typing import Any, NamedTuple, Union, cast, dataclass_transform, get_args, 
 
 import apsw
 
-from .lazy import Lazy
+from .lazy import Lazy, LazyCollection, Rows
 
 logger = logging.getLogger(__name__)
+
+
+# Metadata key under which `backref()` stashes its target FK FieldExpr on the
+# dataclass field, read back during model compilation.
+_BACKREF_KEY = "sqlir_backref"
+
+
+def backref(*, fk: Any, init: bool = False) -> Any:
+    """Declare a virtual reverse relationship from the parent side.
+
+    `fk` is the child's forward-FK field reference (e.g. `Athlete.team`), not a
+    string — so it is refactor-safe and disambiguates which FK to invert when a
+    child has several FKs to the same parent. A `list[Child]` annotation makes
+    it has_many; a scalar `Child` annotation makes it has_one.
+
+    Backref fields are *virtual*: they back no column and never appear in any
+    SQL (DDL/INSERT/SELECT). They materialize lazily on first access.
+
+    `init` exists only so PEP 681 type checkers treat the field as excluded from
+    the synthesized `__init__`; it defaults to `False` and should not be passed.
+    """
+    # repr=False: a backref is virtual and lazily loaded, so including it in the
+    # dataclass repr would trigger a DB query and recurse forever through
+    # circular relations (parent -> children -> parent -> ...).
+    return field(default=None, init=init, repr=False, metadata={_BACKREF_KEY: fk})
 
 
 # Raw class attrs populated during compilation.
@@ -26,6 +51,7 @@ _COMPILED_CACHE_ATTRS = frozenset(
         "__fields_by_name__",
         "__lazy_relations__",
         "__lazy_field_names__",
+        "__backref_by_name__",
         "__converter__",
     }
 )
@@ -45,11 +71,18 @@ class ModelField(NamedTuple):
     sql_columndef: str
 
 
+class BackrefRelation(NamedTuple):
+    name: str  # the virtual field name on the parent (e.g. "members")
+    child_model: type  # the model holding the forward FK (e.g. Athlete)
+    fk_name: str  # the child's FK field pointing back at the parent (e.g. "team")
+    is_many: bool  # True for list[Child] (has_many), False for scalar Child (has_one)
+
+
 def _uncompiled_rowconverter(_: apsw.SQLiteValues) -> tuple[Any, ...]:
     raise AssertionError("Model converter accessed before model compilation")
 
 
-@dataclass_transform(field_specifiers=(field,))
+@dataclass_transform(field_specifiers=(field, backref))
 class RowMeta(type):
     """Metaclass that transforms model classes into frozen dataclasses.
 
@@ -78,6 +111,7 @@ class RowMeta(type):
     __fields_by_name__: dict[str, ModelField]
     __lazy_relations__: tuple[tuple[int, str, type[TableRow]], ...]
     __lazy_field_names__: frozenset[str]
+    __backref_by_name__: dict[str, BackrefRelation]
     __converter__: RowConverter
     __select_query__: Any
     _is_dataclass_parsing: bool
@@ -106,6 +140,7 @@ class RowMeta(type):
         model_cls.__fields_by_name__ = {}
         model_cls.__lazy_relations__ = ()
         model_cls.__lazy_field_names__ = frozenset()
+        model_cls.__backref_by_name__ = {}
         model_cls.__converter__ = _uncompiled_rowconverter
         model_cls.__select_query__ = ns.get("__select_query__")
         type.__setattr__(model_cls, "_tablename_is_default", "__tablename__" not in ns)
@@ -116,9 +151,12 @@ class RowMeta(type):
     def _field_expr(cls, name: str) -> Any:
         from .rel import FieldExpr
 
-        field = cls.__fields_by_name__[name]
-        target_model = field.type if field.is_fk else None
-        return FieldExpr(name, cls, target_model=target_model)
+        # Build the expr without forcing compilation: a backref like
+        # `backref(fk=Athlete.team)` accesses `Athlete.team` while `Team` is
+        # still being defined, so compiling `Athlete` here would fail to resolve
+        # the `Team` forward reference. `FieldExpr` resolves its target model
+        # lazily, by which point both models exist.
+        return FieldExpr(name, cls)
 
     def __getattribute__(cls, name: str) -> Any:
         if name in _COMPILED_CACHE_ATTRS:
@@ -155,8 +193,15 @@ class RowMeta(type):
 
     def _compile_model(cls) -> None:
         annotations = _get_resolved_annotations(cls)
-        fieldnames = cls.__dataclass_fields__.keys()
-        full_types = tuple(annotations.values())
+        dataclass_fields = cls.__dataclass_fields__
+
+        # Split declared fields into real columns and virtual backrefs. Backref
+        # fields back no column and never enter any SQL, so they are excluded
+        # from `__fields__`, DDL, INSERT/SELECT, and the converter.
+        backref_specs = {name: f.metadata[_BACKREF_KEY] for name, f in dataclass_fields.items() if _BACKREF_KEY in f.metadata}
+
+        fieldnames = [name for name in dataclass_fields if name not in backref_specs]
+        full_types = tuple(annotations[name] for name in fieldnames)
         unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
 
         # `Any` has no storage/schema/affinity, so it cannot back a column on a
@@ -191,11 +236,14 @@ class RowMeta(type):
 
         lazy_relations = tuple((idx, field.name, cast(type[TableRow], field.type)) for idx, field in enumerate(fields) if field.is_fk)
 
+        backref_relations = tuple(_build_backref_relation(cls, name, annotations[name], fk) for name, fk in backref_specs.items())
+
         cls.__tablename__ = table_name
         cls.__fields__ = fields
         cls.__fields_by_name__ = {field.name: field for field in fields}
         cls.__lazy_relations__ = lazy_relations
         cls.__lazy_field_names__ = frozenset(name for _, name, _ in lazy_relations)
+        cls.__backref_by_name__ = {rel.name: rel for rel in backref_relations}
 
         type.__setattr__(cls, "_is_compiled", True)
 
@@ -221,12 +269,20 @@ class TableRow(metaclass=RowMeta):
         if name.startswith("__"):
             return value
 
-        lazy_field_names = type(self).__lazy_field_names__
-        if name not in lazy_field_names:
+        cls = type(self)
+
+        if name in cls.__lazy_field_names__:
+            if isinstance(value, Lazy):
+                return value._obj()  # materialize & return real row  # noqa: SLF001
             return value
 
-        if isinstance(value, Lazy):
-            return value._obj()  # materialize & return real row  # noqa: SLF001
+        if name in cls.__backref_by_name__:
+            if isinstance(value, LazyCollection):
+                return value._obj()  # materialize & cache the reverse query  # noqa: SLF001
+            # Unmaterialized (a manually constructed, not-yet-loaded parent):
+            # there is no engine to query, so give an honest empty result.
+            return Rows() if cls.__backref_by_name__[name].is_many else None
+
         return value
 
     @classmethod
@@ -284,6 +340,36 @@ class TableModelInheritanceError(ModelDefinitionError):
         super().__init__(f"Table model `{model_name}` cannot subclass table model `{base_model_name}`. Subclass `TableRow` directly, or use `Row` for inherited ad-hoc models.")
 
 
+class BackrefError(ModelDefinitionError):
+    pass
+
+
+class BackrefFkNotFieldReference(BackrefError):
+    def __init__(self, model_name: str, field_name: str) -> None:
+        super().__init__(
+            f"Backref `{model_name}.{field_name}` needs `fk=` to be a single forward-FK field reference like `Child.parent`, not a string or dotted path.",
+        )
+
+
+class BackrefChildNotTableRow(BackrefError):
+    def __init__(self, model_name: str, field_name: str, child_name: str) -> None:
+        super().__init__(f"Backref `{model_name}.{field_name}` points at `{child_name}`, which is not a `TableRow` model.")
+
+
+class BackrefFkMismatch(BackrefError):
+    def __init__(self, model_name: str, field_name: str, child_name: str, fk_name: str) -> None:
+        super().__init__(
+            f"Backref `{model_name}.{field_name}` uses `fk={child_name}.{fk_name}`, but `{child_name}.{fk_name}` is not a foreign key pointing back at `{model_name}`.",
+        )
+
+
+class BackrefCardinalityMismatch(BackrefError):
+    def __init__(self, model_name: str, field_name: str, child_name: str, annotated_name: str) -> None:
+        super().__init__(
+            f"Backref `{model_name}.{field_name}` is annotated for `{annotated_name}` but `fk=` points at `{child_name}`. Use `list[{child_name}]` (has_many) or `{child_name}` (has_one).",
+        )
+
+
 native_columntypes: dict[type, str] = {
     str: "TEXT",
     float: "REAL",
@@ -295,6 +381,34 @@ native_columntypes: dict[type, str] = {
 def is_tablerow_model(cls: object) -> bool:
     """Test at runtime whether an object is a TableRow model."""
     return isinstance(cls, type) and issubclass(cls, TableRow)
+
+
+def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any, fk: Any) -> BackrefRelation:
+    """Validate one `backref()` declaration and lower it to a `BackrefRelation`."""
+    from .rel import FieldExpr
+
+    # `fk` must be a single forward-FK field reference like `Athlete.team`.
+    if not isinstance(fk, FieldExpr) or fk._model is None or "." in fk._name:  # noqa: SLF001
+        raise BackrefFkNotFieldReference(parent_cls.__name__, field_name)
+
+    child_model = fk._model  # noqa: SLF001
+    fk_name = fk._name  # noqa: SLF001
+
+    if not is_tablerow_model(child_model):
+        raise BackrefChildNotTableRow(parent_cls.__name__, field_name, getattr(child_model, "__name__", repr(child_model)))
+
+    # has_many is `Rows[Child]`; has_one is a bare scalar `Child`.
+    _, unwrapped = _unwrap_optional_type(full_type)
+    is_many = get_origin(unwrapped) is Rows
+    annotated_model = get_args(unwrapped)[0] if is_many else unwrapped
+    if annotated_model is not child_model:
+        raise BackrefCardinalityMismatch(parent_cls.__name__, field_name, child_model.__name__, getattr(annotated_model, "__name__", repr(annotated_model)))
+
+    child_field = child_model.__fields_by_name__.get(fk_name)
+    if child_field is None or not child_field.is_fk or child_field.type is not parent_cls:
+        raise BackrefFkMismatch(parent_cls.__name__, field_name, child_model.__name__, fk_name)
+
+    return BackrefRelation(name=field_name, child_model=child_model, fk_name=fk_name, is_many=is_many)
 
 
 def has_select_query(Model: object) -> bool:

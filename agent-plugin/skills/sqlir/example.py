@@ -10,7 +10,8 @@ import sys
 import apsw
 
 from sqlir.engine import Engine
-from sqlir.model import Row, TableRow
+from sqlir.model import Row, TableRow, backref
+from sqlir.lazy import Rows
 
 # %% [markdown]
 # # Models
@@ -117,6 +118,52 @@ singer = engine.find(BandMember, mark.id)
 
 print(singer.name)
 print(singer.band.name) # `band` field gets lazy loaded
+
+# %% [markdown]
+# ## Backrefs (reverse relationships)
+# A foreign key is one-directional: `BandMember.band` walks child → parent.
+# A **backref** adds the reverse, parent → children, navigation. Declare it
+# with `backref(fk=Child.parent)` and a `Rows[Child]` annotation (has_many) or
+# a bare `Child` annotation (has_one).
+#
+# Because `backref(fk=Track.album)` is evaluated while the class body runs, the
+# **child must be defined before the parent** — the reverse of the usual order.
+
+# %%
+class Track(TableRow):
+    title: str
+    album: "Album"  # forward FK: child -> parent
+
+class Album(TableRow):
+    title: str
+    tracks: Rows[Track] = backref(fk=Track.album)  # reverse: parent -> children
+
+engine.ensure_table_created(Album)
+engine.ensure_table_created(Track)
+
+oddments = engine.insert(Album("Oddments"))
+engine.insert(Track("Lordy", oddments))
+engine.insert(Track("River", oddments))
+
+# %% [markdown]
+# Navigate from the parent to its children. The collection materializes on first
+# access (one query) and is an immutable `Rows` — you can iterate and index it,
+# but you can't append to it:
+
+# %%
+album = engine.find(Album, oddments.id)
+print([t.title for t in album.tracks])  # has_many navigation -> Rows[Track]
+print(album.tracks[0].title)            # indexable, ordered, immutable
+
+# %% [markdown]
+# Filter parents by a property of their children. This lowers to an `EXISTS`
+# semi-join, so a parent appears **once** no matter how many children match (no
+# fan-out). Index the relationship with `[0]` to keep the predicate well-typed
+# (`tracks` is a collection, so `tracks[0]` is the `Track` whose fields you filter on):
+
+# %%
+for album in engine.select(Album, Album.tracks[0].title == "River"):
+    print(album.title)
 
 # %% [markdown]
 # Dummy data for later, also demonstrates multi-level relationships.
@@ -301,39 +348,6 @@ top_scorers_with_param = t"""
 winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]
 
 engine.select(MyModel, winners_today).fetchall()
-
-# %% [markdown]
-# ## Querys requiring backrefs
-#
-# Eventually we will support backrefs:
-#
-# ```python
-# class League(Row):
-#     id: int | None
-#     leaguename: str
-#     teams: BackRef[Team] # backref will be something like this
-# ```
-#
-# And then you could do:
-#
-# ```python
-# engine.select(League, League.teams.teamname == "Big")
-# ```
-#
-# For now, bake the join into a `Row` model with `__select_query__`:
-
-# %%
-class BigLeague(Row):
-    id: int | None
-    leaguename: str
-
-    __select_query__ = t"""
-    SELECT {League}.* FROM {League}
-    JOIN {Team} ON {Team.league} = {League.id}
-    WHERE {Team.teamname} = 'Big'
-    """
-
-engine.select(BigLeague).fetchone()
 
 # %% [markdown]
 # ## Ad-hoc models and the `Any` type

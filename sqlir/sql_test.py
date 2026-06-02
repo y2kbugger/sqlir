@@ -1,10 +1,10 @@
 from textwrap import dedent
 
 import apsw
-import pytest
 
 from sqlir.engine import Engine
-from sqlir.model import Row, TableRow
+from sqlir.lazy import Rows
+from sqlir.model import Row, TableRow, backref
 from sqlir.sql import build_select_sql
 
 
@@ -12,15 +12,16 @@ class League(TableRow):
     leaguename: str
 
 
-class Team(TableRow):
-    teamname: str
-    league: League
-
-
 class Athlete(TableRow):
     name: str
     team: Team
     number: int
+
+
+class Team(TableRow):
+    teamname: str
+    league: League
+    athletes: Rows[Athlete] = backref(fk=Athlete.team)
 
 
 class AthleteView(Row):
@@ -105,7 +106,6 @@ def test_select_where_tstring_scalar_subquery_clause_starts_on_own_line() -> Non
     assert params == {}
 
 
-@pytest.mark.skip(reason="need backrefs to support this exists query")
 def test_fanout_not_occur() -> None:
     engine = Engine(apsw.Connection(":memory:"))
     engine.ensure_table_created(League)
@@ -135,15 +135,16 @@ def test_fanout_not_occur() -> None:
         engine.insert(player)
 
     # normal usage to check condition on related table
-    cur_semi = engine.select(Team, Team.athlete.number == 7)
+    cur_semi = engine.select(Team, Team.athletes[0].number == 7)
     # assert it generates the EXISTS implicitly via normal usage
     assert "EXISTS" in cur_semi.sql
 
     rows_semi = cur_semi.fetchall()
 
-    # only two teams have a player with #7, even though there are three players #7
+    # only two teams have a player with #7 (Blue has two, Yellow one), even
+    # though there are three players #7 total — the semi-join must not fan out.
     assert len(rows_semi) == 2
-    assert {r.teamname for r in rows_semi} == {"Red", "Blue"}
+    assert {r.teamname for r in rows_semi} == {"Blue", "Yellow"}
 
     # A join from Team (one side) to Athlete (many side) fans out. Bind the raw
     # join to a `Row` model via `__select_query__` instead of running raw SQL.
@@ -158,4 +159,4 @@ def test_fanout_not_occur() -> None:
 
     rows_join = engine.select(TeamFanout).fetchall()
     assert len(rows_join) == 3
-    assert [r.teamname for r in rows_join] == ["Red", "Blue", "Blue"]
+    assert [r.teamname for r in rows_join] == ["Blue", "Blue", "Yellow"]

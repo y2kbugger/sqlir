@@ -126,6 +126,35 @@ engine.select(TopScores, order="score DESC", limit=3)
 `JOIN`s in predicates are automatic, and disambiguated by the reference path, e.g. `Athlete.team.name`.
 Foreign-key traversal is lowered to either **EXISTS semi-joins** in or **scalar subqueries semi-joins** depending on the context.
 
+## Backrefs
+
+A backref is a virtual reverse relationship declared on the parent with the
+`backref()` field specifier and an explicit forward-FK reference. Cardinality
+comes from the annotation: `Rows[Child]` is has_many, a bare scalar `Child` is
+has_one. The child must be defined **before** the parent.
+
+```python
+class Player(TableRow):
+    name: str
+    squad: Squad                                       # forward FK (child -> parent)
+
+class Squad(TableRow):
+    name: str
+    players: Rows[Player] = backref(fk=Player.squad)   # reverse (parent -> children)
+```
+
+Backref fields back no column and never enter SQL. Navigation materializes
+lazily on first access (one `select`) and is cached; has_many yields an
+immutable `Rows` (a `tuple` subclass), has_one a single row or `None`. An
+unsaved parent yields an empty `Rows()` / `None`.
+
+Filter through an index to stay typed (`[0]` is statically the `Child`; the
+semi-join still spans the whole relation):
+
+```python
+engine.select(Squad, Squad.players[0].number == 7)
+```
+
 ## Type Mapping
 SQLite has only five native storage types
 (see the [sqlite3 type docs](https://docs.python.org/3/library/sqlite3.html#sqlite3-types)):
@@ -194,7 +223,7 @@ Note: `engine.select()` returns `[]`instead of raising, giving you the choice of
 |   | _Relationships_                      |                                                                     |                                                                  |
 |   | Joins                                  | implicit by path reference, e.g. `Post.user.name` (EXISTS semi-join)| `joins(:team => :league)`                                        |
 |   | Loading                                | always lazy (`Lazy[M]` FK proxy)                                    | lazy with `includes`                                             |
-| * | Backref relationships                  | `teams: list[Person]`                                               | `has_many :people`                                               |
+| * | Backref relationships                  | `players: Rows[Player] = backref(fk=Player.squad)`                  | `has_many :people`                                               |
 | * | Many-to-many                           | through join models                                                 | `has_and_belongs_to_many`                                        |
 |   |                                        |                                                                     |                                                                  |
 |   | **Read**                               |                                                                     |                                                                  |

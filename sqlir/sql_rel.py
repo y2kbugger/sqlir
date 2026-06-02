@@ -19,21 +19,29 @@ from .rel import BinaryExpr, FieldExpr, LogicalExpr
 # ---------------------------------------------------------------------------
 
 
-def _walk_fk_hops(BaseModel: type[TableRow], attrs: list[str]) -> Iterator[tuple[str, str, type[TableRow], str]]:
-    """Walk a chain of FK attributes from `BaseModel`.
+def _walk_fk_hops(BaseModel: type[TableRow], attrs: list[str]) -> Iterator[tuple[str, str, type[TableRow], str, str]]:
+    """Walk a chain of relationship attributes from `BaseModel`.
 
-    Yields `(current_alias, attr, next_model, next_alias)` for each hop.
-    The first hop starts at the base table's own name; subsequent aliases
-    are joined with underscores to remain unique within a query.
+    Yields `(current_alias, attr, next_model, next_alias, join)` for each hop,
+    where `join` is the SQL join predicate tying the hop's subquery to the
+    outer row. A *forward* FK hop joins `next.id = current.<fk>`; a *reverse*
+    backref hop inverts it to `next.<fk> = current.id` (the no-fan-out
+    semi-join direction).
     """
     base_table = BaseModel.__tablename__
     current_model: type[TableRow] = BaseModel
     current_alias = base_table
     for attr in attrs:
-        field = current_model.__fields_by_name__[attr]
-        next_model = cast(type[TableRow], field.type)
         next_alias = f"{current_alias}_{attr}" if current_alias != base_table else attr
-        yield current_alias, attr, next_model, next_alias
+        field = current_model.__fields_by_name__.get(attr)
+        if field is not None and field.is_fk:
+            next_model = cast(type[TableRow], field.type)
+            join = f"{next_alias}.id = {current_alias}.{attr}"
+        else:
+            backref = current_model.__backref_by_name__[attr]
+            next_model = cast(type[TableRow], backref.child_model)
+            join = f"{next_alias}.{backref.fk_name} = {current_alias}.id"
+        yield current_alias, attr, next_model, next_alias, join
         current_model = next_model
         current_alias = next_alias
 
@@ -48,9 +56,9 @@ def _build_scalar_subquery(BaseModel: type[TableRow], path: str) -> str:
     hops = list(_walk_fk_hops(BaseModel, parts[:-1]))
     last_alias = hops[-1][3]
     expr = f"{last_alias}.{parts[-1]}"
-    for depth, (current_alias, attr, next_model, next_alias) in enumerate(reversed(hops)):
+    for depth, (_current_alias, _attr, next_model, next_alias, join) in enumerate(reversed(hops)):
         indent = "    " * (len(hops) - 1 - depth)
-        expr = f"(\n{indent}    SELECT {expr}\n{indent}    FROM {next_model.__tablename__} {next_alias}\n{indent}    WHERE {next_alias}.id = {current_alias}.{attr}\n{indent})"
+        expr = f"(\n{indent}    SELECT {expr}\n{indent}    FROM {next_model.__tablename__} {next_alias}\n{indent}    WHERE {join}\n{indent})"
     return expr
 
 
@@ -65,9 +73,9 @@ def _build_exists(BaseModel: type[TableRow], path: str, op: str, value_sql: str)
     hops = list(_walk_fk_hops(BaseModel, parts[:-1]))
     last_alias = hops[-1][3]
     inner = f"{last_alias}.{parts[-1]} {op} {value_sql}"
-    for depth, (current_alias, attr, next_model, next_alias) in enumerate(reversed(hops)):
+    for depth, (_current_alias, _attr, next_model, next_alias, join) in enumerate(reversed(hops)):
         indent = "    " * (len(hops) - 1 - depth)
-        inner = f"EXISTS (\n{indent}    SELECT 1 FROM {next_model.__tablename__} {next_alias}\n{indent}    WHERE {next_alias}.id = {current_alias}.{attr}\n{indent}    AND {inner}\n{indent})"
+        inner = f"EXISTS (\n{indent}    SELECT 1 FROM {next_model.__tablename__} {next_alias}\n{indent}    WHERE {join}\n{indent}    AND {inner}\n{indent})"
     return inner
 
 

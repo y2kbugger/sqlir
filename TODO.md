@@ -1,5 +1,9 @@
 # WIP
 - Backport unfetched sentinel style to orinal Lazy from LazyCollection
+- Annotate style backref
+- can we compress these into just a dict fields?
+    cls.__lazy_relations__ = lazy_relations
+    cls.__lazy_field_names__ = frozenset(name for _, name, _ in lazy_relations)
 
 # Bugs
 
@@ -29,6 +33,10 @@ All of these need test cases (or need it verified that a test already exists), e
 - test that typechecker _knows_ that our models are immutable.
 - test param overide works on both __select_query__ AND predicates
 - test refactorable interpolation of columns in `order`.
+- test that one-to-one backrefs have the unique constraint.
+- test param passing backref fields to on insert. (only happens in anti-pattern of trying to reinsert from a fetched model with backrefs, but it still concerns me)
+
+- consider circular backref loops, right now we alleviated symptom by making backrefs not show up in repr, but shoulds we do something smarter? like cache orig value and point back to eliminate more queries when traversing? or alternatively, RAISE if someone navigate looplike? that seems harsh.
 
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
@@ -49,9 +57,6 @@ All of these need test cases (or need it verified that a test already exists), e
 - migration interactive restore list too long. can you page restores or head results?
 
 
-## Backpop / backref
-- Implemented. Decided design + outstanding work live in [backref.md](backref.md).
-
 
 # Later
 - Fix up example.ipynb to better structure relation and predicate separate from concept of `engine.select` and the `__select_query__` escape hatch.
@@ -66,6 +71,7 @@ All of these need test cases (or need it verified that a test already exists), e
 - fix typing for rel combos like: `winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]`
 - Find and remove unused exceptions
 - make sql*.py private also rel*.py probably...
+- many-to-many style backrefs
 
 
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds

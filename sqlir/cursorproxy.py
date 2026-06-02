@@ -11,7 +11,7 @@ import apsw.unicode
 
 from sqlir.model import TableRow
 
-from .lazy import Lazy
+from .lazy import Lazy, LazyCollection
 from .model import Row, RowConverter, is_tablerow_model
 
 if TYPE_CHECKING:
@@ -36,6 +36,7 @@ class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
             assert issubclass(Model, TableRow)
             TableModel = cast(type[TableRow], Model)
             lazy_relations = TableModel.__lazy_relations__
+            backref_relations = tuple(TableModel.__backref_by_name__.values())
 
             def row_fac(c: apsw.Cursor, r: apsw.SQLiteValues) -> R:
                 root_row = convert(r)
@@ -46,6 +47,11 @@ class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
                     assert isinstance(fk_value, int | type(None))
                     if fk_value is not None:
                         object.__setattr__(row, field_name, Lazy(engine, related_model, fk_value))
+
+                parent_id = root_row[0]
+                if parent_id is not None:
+                    for rel in backref_relations:
+                        object.__setattr__(row, rel.name, LazyCollection(engine, cast(type[TableRow], rel.child_model), rel.fk_name, parent_id, rel.is_many))
 
                 return row
         else:

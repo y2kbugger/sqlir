@@ -1,7 +1,6 @@
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import fields
 from typing import Any
 
 import apsw
@@ -170,14 +169,22 @@ class Engine:
     #### Writing
     def insert[R: TableRow](self, row: R) -> R:
         """Insert a record."""
-        # Don't allow saving if a related row is not persisted
-        for f in fields(row)[1:]:  # skip id field
-            related_row = getattr(row, f.name)
-            if is_tablerow_model(related_row.__class__) and related_row.id is None:
-                raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
-
         Model = type(row)
+
+        # Check that all related objects are persisted (have an id) before inserting.
+        for f in Model.__fields__:
+            if not f.is_fk:
+                continue
+            related = getattr(row, f.name)
+            if related is not None and related.id is None:
+                raise UnpersistedRelationshipError(Model.__name__, f.name, row)
+
         insert = build_insert_sql(Model)
+
+        # `vars(row)` is a single C-level __dict__ read (much cheaper than per-field
+        # `getattr`, which routes through TableRow.__getattribute__). Virtual backref
+        # fields living in __dict__ are harmless extra keys: apsw ignores dict bindings
+        # not referenced by the statement's placeholders.
         cur = self._query(Model, insert, vars(row))
         result = cur.fetchone()
         cur.close()
