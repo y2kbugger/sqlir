@@ -53,7 +53,7 @@ repos:
       language: system
       pass_filenames: false
       fail_fast: true
-      files: ^(example\.ipynb|API\.md|scripts/sync_plugin\.py)$
+      files: ^(example\.ipynb|API\.md|MIGRATIONS\.md|scripts/sync_plugin\.py)$
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.9.17
   hooks:

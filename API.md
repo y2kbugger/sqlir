@@ -1,14 +1,62 @@
 # API
 
-## Concepts
+## Engine
 
-**Model (M)** — Typed record definition. Subclass `TableRow` for persisted
-tables, or `Row` for ad-hoc / view-shaped query results. Field `id: int | None`
-is provided automatically by `TableRow` (kw-only, defaulted); do not declare it
-yourself. Table models must subclass `TableRow` directly; subclassing an
-existing table model raises `TableModelInheritanceError`. `Row` models may
-subclass each other like normal frozen dataclasses. Models are frozen
-dataclasses; use `dataclasses.replace(obj, ...)` to produce a modified copy.
+```python
+class Engine:
+    def ensure_table_created(self, Model: type[M]) -> None: ...
+
+    def insert(self, row: M) -> M: ...
+
+    def find(self, Model: type[M], target, params=None, /, *, order=None) -> M: ...
+    def select(self, Model: type[M], target=None, params=None, /, *, order=None, limit=None, offset=None) -> TypedCursorProxy[M]: ...
+
+    def update(self, Model: type[M], target, params=None, /, **patch) -> int: ...
+    def delete(self, Model: type[M], target, params=None, /) -> int: ...
+```
+
+- `e.insert` a record and return it with `id` populated.
+- `e.find` a single record or `RecordNotFoundError` when nothing matches. If you ever _find_ yourself useing `cur.fetchone`, you may want `e.find` instead.
+- `e.select` records via a `TypedCursorProxy[M]`. The cursor is **iterable**, and exposes the usual apsw methods (`cur.fetchone`, `cur.fetchall`, `cur.fetchmany`).
+- `e.update` / `e.delete` records and return the number affected.
+
+- `target` specific records
+    - match all records, e.g. `None` (default)
+    - by id, e.g. `10`
+    - or a predicate expression, e.g. `Post.name == "Hi"` or `t"{Post.body} LIKE '%hello%'"`
+- `params` override bind parameters in the predicate or bound `__select_query__`
+  Interpolations whose source expression is a valid identifier are bound under that name
+  (e.g. `{tolerance}` → `:tolerance`), so the same predicate can be reused
+  with different values:
+  ```python
+  pred = t"{Post.score} >= {min_score}"
+  engine.select(Post, pred, {"min_score": 50})
+  engine.select(Post, pred, {"min_score": 90})
+- `order` clause, e.g. `"name DESC, id"`.
+- `limit` and `offset` for pagination.
+  ```
+
+## Models
+
+**Row** — A dataclass of typed fields for returning `e.find` and `e.select` results.
+
+The query can be bound two ways:
+
+- `__select_query__` to bind a specific SQL query to the model, allows parameters.
+- `__table_name__` assigned to a db `VIEW`
+
+    ```python
+    class One(Row):
+        val: int
+        __select_query__ = "SELECT 1"
+    ```
+    ```python
+    class Managers(Row):
+        name: str
+        __table_name__ = "managers_view"
+    ```
+
+**TableRow** — A `Row` that is backed by a table, provides an `id: int | None` field. In addition to read operations, `TableRow` models also support `e.insert`, `e.update`, and `e.delete`.
 
 ```python
 class User(TableRow):
@@ -16,6 +64,8 @@ class User(TableRow):
     age: int
     manager: User | None
 ```
+
+## Predicates
 
 **Relation (R)** — Predicate expression built from model fields. Traversal
 across foreign keys is expressed by field chaining and lowered to **EXISTS
@@ -41,44 +91,6 @@ For find/update/delete-by-id, pass the integer id directly as the target
 engine.find(User, 10)
 ```
 
-## Engine API
-
-```python
-class Engine:
-    def ensure_table_created(self, Model: type[TableRow]) -> None: ...
-
-    def insert(self, row: M) -> M: ...
-
-    def find(self, Model: type[M], target, params=None, /, *, order=None) -> M: ...
-    def select(self, Model: type[M], target=None, params=None, /, *, order=None, limit=None, offset=None) -> TypedCursorProxy[M]: ...
-
-    def update(self, Model: type[TableRow], target, params=None, /, **patch) -> int: ...
-    def delete(self, Model: type[TableRow], target, params=None, /) -> int: ...
-```
-
-- `find` raises `RecordNotFoundError` when nothing matches. If you ever _find_ yourself useing fetchone, you probably want `find` instead.
-- `select` returns a `TypedCursorProxy[M]`. The cursor is **iterable** (yields
-  model instances) for streaming, and exposes the usual apsw methods
-  (`fetchone`, `fetchall`, `fetchmany`). `target=None` selects all rows.
-  ```python
-  for row in engine.select(Post, Post.score > 95.7):  # streams row-by-row
-      ...
-  rows = engine.select(Post).fetchall()               # materialize all
-  ```
-- `update` / `delete` return the number of affected rows; `target=None`
-  is a no-op (returns `0`).
-- `insert` is for `TableRow` only and returns the inserted row with `id`
-  populated.
-- `params` (positional, on `find` / `select` / `update` / `delete`) overrides
-  named parameters bound by a t-string `target`. Plain-value interpolations
-  whose source expression is a valid identifier are bound under that name
-  (e.g. `{tolerance}` → `:tolerance`), so the same predicate can be reused
-  with different values:
-  ```python
-  pred = t"{Post.score} >= {min_score}"
-  engine.select(Post, pred, {"min_score": 50})
-  engine.select(Post, pred, {"min_score": 90})
-  ```
 
 ### `__select_query__` — model-bound queries
 
@@ -108,6 +120,65 @@ engine.select(TopScores, order="score DESC", limit=3)
   `target`/`order`/`limit` are unavailable on PRAGMA-style models.
 - Only allowed on `Row` models; declaring it on a `TableRow` raises
   `SelectQueryNotAllowedOnTableRow`.
+
+## Joins
+
+`JOIN`s in predicates are automatic, and disambiguated by the reference path, e.g. `Athlete.team.name`.
+Foreign-key traversal is lowered to either **EXISTS semi-joins** in or **scalar subqueries semi-joins** depending on the context.
+
+## Type Mapping
+SQLite has only five native storage types
+(see the [sqlite3 type docs](https://docs.python.org/3/library/sqlite3.html#sqlite3-types)):
+
+| Python | SQLite  |
+|--------|---------|
+| None   | NULL    |
+| int    | INTEGER |
+| float  | REAL    |
+| str    | TEXT    |
+| bytes  | BLOB    |
+
+On top of those, `sqlir` handles the following types automatically:
+
+| Python                                           | SQLite Schema Type     | Mechanism                                            |
+|:-------------------------------------------------|:-----------------------|:-----------------------------------------------------|
+| `bool`                                           | `BOOL_INT` (INTEGER)   | built-in special case (0/1)                          |
+| `datetime`                                       | `DATETIME_TEXT` (TEXT) | unquoted ISO-8601 string via `msgspec.to_builtins()` |
+| `date`                                           | `DATE_TEXT` (TEXT)     | unquoted ISO-8601 string via `msgspec.to_builtins()` |
+| `time`                                           | `TIME_TEXT` (TEXT)     | unquoted ISO-8601 string via `msgspec.to_builtins()` |
+| `Decimal`                                        | `DECIMAL_TEXT` (TEXT)  | unquoted decimal string via `msgspec.to_builtins()`  |
+| `UUID`                                           | `UUID_TEXT` (TEXT)     | unquoted UUID string via `msgspec.to_builtins()`     |
+| `Enum` (String-based)                            | `ENUM_TEXT` (TEXT)     | unquoted string via `msgspec.to_builtins()`          |
+| `Enum` (Integer-based)                           | `ENUM_INT` (INTEGER)   | unquoted int via `msgspec.to_builtins()`             |
+| buffer protocol (e.g. `memoryview`, `bytearray`) | `BLOB` (BLOB)          | apsw auto-adapts via buffer protocol as bytes        |
+| `dict`, `list`, `set`, `tuple`, `dataclass`, etc | `JSON_TEXT` (TEXT)     | msgspec JSON encode/decode                           |
+| `Any`                                            | (N/A)                  | on `Row` only, unconverted apsw passthrough          |
+
+Any other type that msgspec can serialize is stored as JSON. If msgspec cannot
+serialize the type, it raises at write time.
+
+
+## Error Handling (Web Frameworks)
+
+`engine.find()` raises `RecordNotFoundError` when no matching record exists,
+following Ruby on Rails semantics. This makes it easy to convert to HTTP 404
+responses in web frameworks:
+
+```python
+from sqlir.engine import Engine, RecordNotFoundError
+
+# Flask example
+@app.errorhandler(RecordNotFoundError)
+def handle_not_found(e):
+    return {"error": str(e)}, 404
+
+# FastAPI example
+@app.exception_handler(RecordNotFoundError)
+async def not_found_handler(request, exc):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+```
+
+Note: `engine.select()` returns `[]`instead of raising, giving you the choice of how to handle missing records.
 
 ## API Comparison
 
@@ -169,183 +240,4 @@ engine.select(TopScores, order="score DESC", limit=3)
 |   | Callbacks/Hooks                        | not planned                                                         | before_save, after_create, etc.                                  |
 |   | N+1 problem mitigation                 | fast SQLite mitigates concern                                       | `includes()` eager loading                                       |
 
-Rows prefixed with `*` are not implemented; see [TODO.md](TODO.md) for status.
-
-## Model Types
-
-- **table model** — Backed by a table in the database. Subclass `TableRow`.
-- **adhoc model** — Backed by any arbitrary query. Has no `id` field and can
-  have any fields. Subclass `Row`. Could have a manually assigned table which is a view.
-
-## Joins
-
-JOINs are automatic, and disambiguated by the reference path
-`Athlete.team.name`. Foreign-key traversal is lowered to **EXISTS semi-joins**
-in SQL.
-
-## Type Mapping
-
-SQLite has only five native storage types
-(see the [sqlite3 type docs](https://docs.python.org/3/library/sqlite3.html#sqlite3-types)):
-
-| Python | SQLite  |
-|--------|---------|
-| None   | NULL    |
-| int    | INTEGER |
-| float  | REAL    |
-| str    | TEXT    |
-| bytes  | BLOB    |
-
-On top of those, sqlir handles the following types automatically:
-
-| Python                                           | SQLite Schema Type     | Mechanism                                            |
-|:-------------------------------------------------|:-----------------------|:-----------------------------------------------------|
-| `bool`                                           | `BOOL_INT` (INTEGER)   | built-in special case (0/1)                          |
-| `datetime`                                       | `DATETIME_TEXT` (TEXT) | unquoted ISO-8601 string via `msgspec.to_builtins()` |
-| `date`                                           | `DATE_TEXT` (TEXT)     | unquoted ISO-8601 string via `msgspec.to_builtins()` |
-| `time`                                           | `TIME_TEXT` (TEXT)     | unquoted ISO-8601 string via `msgspec.to_builtins()` |
-| `Decimal`                                        | `DECIMAL_TEXT` (TEXT)  | unquoted decimal string via `msgspec.to_builtins()`  |
-| `UUID`                                           | `UUID_TEXT` (TEXT)     | unquoted UUID string via `msgspec.to_builtins()`     |
-| `Enum` (String-based)                            | `ENUM_TEXT` (TEXT)     | unquoted string via `msgspec.to_builtins()`          |
-| `Enum` (Integer-based)                           | `ENUM_INT` (INTEGER)   | unquoted int via `msgspec.to_builtins()`             |
-| buffer protocol (e.g. `memoryview`, `bytearray`) | `BLOB` (BLOB)          | apsw auto-adapts via buffer protocol as bytes        |
-| `dict`, `list`, `set`, `tuple`, `dataclass`, etc | `JSON_TEXT` (TEXT)     | msgspec JSON encode/decode fallback                  |
-
-Any other type that msgspec can serialize is stored as JSON. If msgspec cannot
-serialize the type, it raises at write time.
-
-### `Any`
-
-`Any` is **banned on table models** (`TableRow`): it has no storage/schema/SQL
-type or affinity, so there is no sensible column to create. Declaring an `Any`
-field on a `TableRow` raises `AnyTypeNotAllowedOnTableRow` at compile time.
-
-`Any` **is allowed on ad-hoc `Row` models**, where it means "pass the raw
-SQLite value through unconverted" — no adaptation on the way in, no conversion
-on the way out.
-
-### A note on datetime storage and SQLite date functions
-
-Complex types like `list`, `dict`, and `dataclass` are stored as **JSON TEXT**
-(SQLite will report their `typeof()` as `text`). However, scalar types like
-`datetime`, `Decimal`, `UUID`, and string `Enum` are stored as pure unquoted
-strings (also `text` affinity). Integer `Enum`s are stored as plain integers.
-Buffer protocols (`bytes`, `bytearray`, `memoryview`) are stored as raw SQLite
-`BLOB`.
-
-Because datetimes are stored as standard `TEXT`:
-- `ORDER BY ts`, `WHERE ts = ?`, `BETWEEN ? AND ?` all work correctly — ISO
-  strings sort lexically
-- SQLite's date functions (`datetime()`, `strftime()`, `julianday()`, etc.)
-  **work natively** on these columns (e.g. `SELECT strftime('%Y', ts)` returns
-  the year)
-- Raw string literals in SQL (`WHERE ts = '2024-06-15T12:00:00'`) **match
-  correctly** without requiring parameter adaptation.
-
-Note: When mixing naive and timezone-aware datetimes, sorting behavior follows
-ASCII string rules (e.g. 'Z' sorts after '.', while '+' and '-' sort before
-'.'). This means aware datetimes can sort incorrectly relative to naive
-datetimes with microseconds. Always store datetimes in a consistent
-timezone/format for chronological sorting.
-
-## Error Handling (Web Frameworks)
-
-`engine.find()` raises `RecordNotFoundError` when no matching record exists,
-following Ruby on Rails semantics. This makes it easy to convert to HTTP 404
-responses in web frameworks:
-
-```python
-from sqlir.engine import Engine, RecordNotFoundError
-
-# Flask example
-@app.errorhandler(RecordNotFoundError)
-def handle_not_found(e):
-    return {"error": str(e)}, 404
-
-# FastAPI example
-@app.exception_handler(RecordNotFoundError)
-async def not_found_handler(request, exc):
-    return JSONResponse(status_code=404, content={"detail": str(exc)})
-```
-
-Note: `engine.find_by()` returns `None` instead of raising, giving you the
-choice of how to handle missing records.
-
-## Migrations
-
-Manage development and application of SQLite schema migrations.
-
-- Ensure schema matches `TableRow` models
-- Ensure migrations apply cleanly to production
-- Triage migration conflicts between devs
-- Auto-generate obvious migrations
-
-### File Layout
-
-```
-mydb.sqlite                    # working DB (refresh from production)
-mydb.sqlite.ref                # reference DB (production snapshot, immutable)
-mydb.sqlite.migrations/
-    001.create_users.sql
-    002.add_email_column.sql
-mydb.sqlite.bak/
-    2026-11-19T14-30-05.123456.000.mydb.sqlite
-    2026-11-20T09-15-42.456789.001.mydb.sqlite
-```
-
-### States
-
-Priority: ERROR > CONFLICTED > DIVERGED > PENDING > MISMATCH > CURRENT.
-
-| State | Meaning | Fix |
-|-------|---------|-----|
-| `CURRENT` | Schema, scripts, and DB all agree | — |
-| `MISMATCH` | Models differ from DB, no script yet | `generate()` → PENDING |
-| `PENDING` | Unapplied migration scripts exist | `apply()` → MISMATCH or CURRENT |
-| `DIVERGED` | Scripts differ from working DB (no ref) | `restore_db()` → PENDING |
-| `CONFLICTED` | Scripts differ from ref DB | `restore_scripts()` → CURRENT or DIVERGED |
-| `ERROR` | Bad migration files (gaps, dupes) | Manual fix |
-
-#### State Transitions Diagram
-
-```
- start ────┐
-           v
-         ┌──────────┐
-         │  check() │<──────────────────────────────yes─────┐
-         └───┬──────┘                                       │
-             │                                            state changed?─────no─────>done
-   ┌──────┬──┴───┬─────────┬───────────┬──────────┐             ^
-   v      v      v         v           v          v             │
- ERROR  CONFL  DIVERG    PENDING    MISMATCH   CURRENT          │
-   │      │      │         │           │          │             │
-   v      v      v         v           v          v             │
- exit 1  restore restore  backup &  generate   exit 0           │
-         scripts  db      apply all                             │
-           │      │         │                                   │
-           └──────┴─────────┴──────────recurse──────────────────┘
-```
-
-Migrations have both a Python API and a CLI, which share the same underlying
-logic and state management. The CLI is just a thin wrapper around the API, so
-any action you can do in the CLI can also be done programmatically, and vice
-versa.
-
-### CLI
-
-Entry point: `sqlir-migrate` (or `python -m sqlir.migrate_cli`)
-
-Global flags (required, with `pyproject.toml` fallback):
-
-```
---db-path PATH           Path to working DB
---models-module MODULE   Dotted module path, e.g. myapp.models
-```
-
-Set permanently in `./pyproject.toml`:
-
-```toml
-[tool.sqlir]
-db_path = "data/mydb.sqlite"
-models_module = "myapp.models"
-```
+Features marked with `*` are not implemented; see [TODO.md](TODO.md) for status.

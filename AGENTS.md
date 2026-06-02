@@ -109,6 +109,14 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
   require a `TableRow`. `Row` is for ad-hoc / view-shaped query results only.
 - **Records are immutable.** Use `dataclasses.replace(obj, field=value)`
   before re-saving; never mutate in place and expect persistence.
+- **Backrefs are child-first + virtual.** Declared with `backref(fk=Child.parent)`
+  + a `Rows[Child]` (has_many) or scalar `Child` (has_one) annotation. The `fk=`
+  is evaluated eagerly while the parent's class body runs, so the **child must be
+  defined before the parent**; self-referential backrefs are unsupported. Backref
+  fields back no column and never enter SQL. Filter through an index to stay
+  typed: `Squad.players[0].number == 7` (`players` is a `Rows`, so `[0]` is the
+  `Child`). Navigation returns an immutable `Rows` (a `tuple` subclass — not
+  appendable). Full design in [backref.md](backref.md).
 
 ## When changing the public API
 
@@ -150,3 +158,4 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
     fenced bad example), a code cell that runs the anti-pattern, a `**Recommended:**`
     markdown cell, then a code cell with the fix. Treat each rough edge you smooth
     over as a candidate anti-pattern, the same way you codify conventions here.
+- We are on a new enough python that you need not use `from __future__ import annotations` not quote them as strings.

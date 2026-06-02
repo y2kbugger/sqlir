@@ -1,5 +1,5 @@
 # WIP
-- Rework API.md
+- Backport unfetched sentinel style to orinal Lazy from LazyCollection
 
 # Bugs
 
@@ -10,7 +10,7 @@ All of these need test cases (or need it verified that a test already exists), e
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
 - find, if more than one result matched
-- Test that non Fields greater than zero cannot be called id
+- Test that non Fields greater than zero cannot be called id, even on row models. if you need to select an id in a row model, give it a different name, e.g. user_id.
 - Test for cyclic data structures e.g. A -> B -> C -> A
 - Test the foreign key may only be a union with None i.e. Optional BUT NOT with int or something else
 - Investigate/ Test what Happens when specifying Model | int, should this raise??
@@ -26,6 +26,9 @@ All of these need test cases (or need it verified that a test already exists), e
 - Can a model use dataclass feature like "field"? should we make a custom one?
 - Test that Row models DO NOT have __table_name__
     - Also why does find, and select etc, allow `Row` models currently? Once we do the `__select_query__` feature this makes more sense, but i don't think it could work right now.
+- test that typechecker _knows_ that our models are immutable.
+- test param overide works on both __select_query__ AND predicates
+- test refactorable interpolation of columns in `order`.
 
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
@@ -46,81 +49,8 @@ All of these need test cases (or need it verified that a test already exists), e
 - migration interactive restore list too long. can you page restores or head results?
 
 
-## Backpop
-- ONCE FINISHED, un-skip the fanout prevention test, and make sure it actually works.
-- Also considder one to one relationships that backpop to a single instance rather than a list
-- set[M] vs list[M] vs BackPop[M] as typehint?
-- backpop
-  ```python
-  class Team(TableRow):
-      name: str
-      teams: list[Person] # Backpop
-
-  class Person(TableRow):
-      name: str
-      team: Team # Forward
-  ```
-
-  Need a way to differentiate between two different backpop of same type
-  - backprop must include the full name of the forward reference as the prefix of it's name
-  - if this is not specified or not unique, raise an `AmbiguousBackpopError`
-  - not FK is allowed to be a subset of another FK on the same model. `AmbiguousForwardReferenceError`
-  ```python
-  # Ex 1. disambiguating backpop
-  class Team(TableRow):
-      name: str
-      primary_teams: list[Person]
-      secondary_teams: list[Person]
-
-  class Person(TableRow):
-      name: str
-      primary_team: Team
-      secondary_team: Team
-
-  # Ex 2. disambiguating backpop
-  class Employee(TableRow):
-      name: str
-      manager_of: List[Project]
-      lead_developer_of: List[Project]
-      lead_maintainer_of: List[Project]
-
-  class Project(TableRow):
-      name: str
-      manager: Employee
-      lead_developer: Employee
-      lead_maintainer: Employee
-      lead: Employee # not allowed, because it is an ambiguous subset of lead_developer
-  ```
-
-  - Backpop without a forward reference, should just be `AmbiguousBackpopError` because it is ambiguous if you cannot find a forward reference that is a complete prefixed subset of the backpop name.
-    ```python
-    class Team(TableRow):
-        name: str
-        teams: list[Person]
-    class Person(TableRow):
-        name: str
-    ```
-  - Many-to-Many shall just fall out of two 1:1, is not really a concept
-  - Here is a test case with complex relations
-  try and figure out if this is ambiguous or not
-  ```python
-  class Employee(TableRow):
-      name: str
-      manager_of: List[Project]
-      lead_developer_of: List[Project]
-      contributor_roles: List[ProjectEmployee]
-
-  class Project(TableRow):
-      name: str
-      manager: Employee
-      lead_developer: Employee
-      contributors: List[ProjectEmployee]
-
-  class ProjectEmployee(TableRow):
-      project: Project
-      employee: Employee
-      role: str
-  ```
+## Backpop / backref
+- Implemented. Decided design + outstanding work live in [backref.md](backref.md).
 
 
 # Later
