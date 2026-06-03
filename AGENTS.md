@@ -109,10 +109,15 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
   require a `TableRow`. `Row` is for ad-hoc / view-shaped query results only.
 - **Records are immutable.** Use `dataclasses.replace(obj, field=value)`
   before re-saving; never mutate in place and expect persistence.
-- **Backrefs are child-first + virtual.** Declared with `backref(fk=Child.parent)`
-  + a `Rows[Child]` (has_many) or scalar `Child` (has_one) annotation. The `fk=`
-  is evaluated eagerly while the parent's class body runs, so the **child must be
-  defined before the parent**; self-referential backrefs are unsupported. Backref
+- **Backrefs are virtual.** Declared with `backref(fk=Child.parent)` or the
+  equivalent string `backref(fk="Child.parent")`, plus a `Rows[Child]`
+  (has_many) or scalar `Child` (has_one) annotation. The typed form is
+  evaluated eagerly while the parent's class body runs, so it still wants the
+  **child defined before the parent**. The string form resolves lazily instead,
+  so it is also available for parent-first or self-referential declarations
+  (`children: Rows["Node"] = backref(fk="Node.parent")`). (An
+  `Annotated`-metadata style was evaluated and rejected — see TODO.md *Never,
+  Will not Implement*.) Backref
   fields back no column and never enter SQL. Filter through an index to stay
   typed: `Squad.players[0].number == 7` (`players` is a `Rows`, so `[0]` is the
   `Child`). Navigation returns an immutable `Rows` (a `tuple` subclass — not

@@ -123,11 +123,15 @@ print(singer.band.name) # `band` field gets lazy loaded
 # ## Backrefs (reverse relationships)
 # A foreign key is one-directional: `BandMember.band` walks child → parent.
 # A **backref** adds the reverse, parent → children, navigation. Declare it
-# with `backref(fk=Child.parent)` and a `Rows[Child]` annotation (has_many) or
-# a bare `Child` annotation (has_one).
+# with `backref(fk=Child.parent)` and a `Rows[Child]` annotation (has_many) or a bare `Child` annotation (has_one).
 #
-# Because `backref(fk=Track.album)` is evaluated while the class body runs, the
-# **child must be defined before the parent** — the reverse of the usual order.
+# The typed form is refactor-safe, but because `backref(fk=Track.album)` is
+# resolved while the class body runs, it still wants the **child defined before
+# the parent**.
+#
+# The fully-qualified string form resolves lazily instead, so it is also
+# available for parent-first or self-referential declarations, e.g.
+# `children: Rows["Node"] = backref(fk="Node.parent")`.
 
 # %%
 class Track(TableRow):

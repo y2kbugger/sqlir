@@ -26,10 +26,16 @@ _BACKREF_KEY = "sqlir_backref"
 def backref(*, fk: Any, init: bool = False) -> Any:
     """Declare a virtual reverse relationship from the parent side.
 
-    `fk` is the child's forward-FK field reference (e.g. `Athlete.team`), not a
-    string — so it is refactor-safe and disambiguates which FK to invert when a
-    child has several FKs to the same parent. A `list[Child]` annotation makes
-    it has_many; a scalar `Child` annotation makes it has_one.
+    `fk` is normally the child's forward-FK field reference (e.g.
+    `Athlete.team`). You may also spell that same reference as the fully-
+    qualified string `"Athlete.team"`. The typed form is more refactor-safe,
+    while the string form resolves later and can be convenient when forward
+    references or declaration order make the typed form awkward. A
+    `list[Child]` annotation makes it has_many; a scalar `Child` annotation
+    makes it has_one.
+
+    Example self-reference:
+    `children: Rows["Node"] = backref(fk="Node.parent")`.
 
     Backref fields are *virtual*: they back no column and never appear in any
     SQL (DDL/INSERT/SELECT). They materialize lazily on first access.
@@ -236,7 +242,11 @@ class RowMeta(type):
 
         lazy_relations = tuple((idx, field.name, cast(type[TableRow], field.type)) for idx, field in enumerate(fields) if field.is_fk)
 
-        backref_relations = tuple(_build_backref_relation(cls, name, annotations[name], fk) for name, fk in backref_specs.items())
+        # A self-referential backref's child is `cls` itself, still mid-compile,
+        # so its `__fields_by_name__` attr isn't set yet. Pass the locally-built
+        # mapping so validation reads it without re-triggering compilation.
+        own_fields_by_name = {field.name: field for field in fields}
+        backref_relations = tuple(_build_backref_relation(cls, name, annotations[name], fk, own_fields_by_name) for name, fk in backref_specs.items())
 
         cls.__tablename__ = table_name
         cls.__fields__ = fields
@@ -347,7 +357,8 @@ class BackrefError(ModelDefinitionError):
 class BackrefFkNotFieldReference(BackrefError):
     def __init__(self, model_name: str, field_name: str) -> None:
         super().__init__(
-            f"Backref `{model_name}.{field_name}` needs `fk=` to be a single forward-FK field reference like `Child.parent`, not a string or dotted path.",
+            f"Backref `{model_name}.{field_name}` needs `fk=` to be a single forward-FK field reference like `Child.parent` "
+            f"or the fully-qualified string `\"Child.parent\"`, not a bare field name or multi-hop path.",
         )
 
 
@@ -383,12 +394,33 @@ def is_tablerow_model(cls: object) -> bool:
     return isinstance(cls, type) and issubclass(cls, TableRow)
 
 
-def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any, fk: Any) -> BackrefRelation:
-    """Validate one `backref()` declaration and lower it to a `BackrefRelation`."""
+def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any, fk: Any, parent_fields_by_name: dict[str, ModelField]) -> BackrefRelation:
+    """Validate one `backref()` declaration and lower it to a `BackrefRelation`.
+
+    `parent_fields_by_name` is the parent's locally-built field map; it is used
+    instead of the not-yet-set `__fields_by_name__` attr when the backref is
+    self-referential (the child is the parent itself, still compiling).
+    """
     from .rel import FieldExpr
 
-    # `fk` must be a single forward-FK field reference like `Athlete.team`.
-    if not isinstance(fk, FieldExpr) or fk._model is None or "." in fk._name:  # noqa: SLF001
+    # has_many is `Rows[Child]`; has_one is a bare scalar `Child`.
+    _, unwrapped = _unwrap_optional_type(full_type)
+    is_many = get_origin(unwrapped) is Rows
+    annotated_model = get_args(unwrapped)[0] if is_many else unwrapped
+
+    # `fk` is a single forward-FK field reference, spelled either as the typed
+    # `Child.team` (a `FieldExpr`) or the fully-qualified string `"Child.team"`.
+    # The string mirrors the typed surface while resolving later, which makes it
+    # usable for parent-first declarations and self-referential backrefs. The
+    # string's model prefix is redundant with the annotation on purpose
+    # (double-entry): a mismatch is a refactor-drift bug. Normalize both spellings
+    # to a single `FieldExpr` so the rest of the function has one path.
+    if isinstance(fk, str):
+        model_name, _, fk_name = fk.partition(".")
+        if not fk_name or "." in fk_name or model_name != getattr(annotated_model, "__name__", None):
+            raise BackrefFkNotFieldReference(parent_cls.__name__, field_name)
+        fk = FieldExpr(fk_name, annotated_model)
+    elif not (isinstance(fk, FieldExpr) and fk._model is not None and "." not in fk._name):  # noqa: SLF001
         raise BackrefFkNotFieldReference(parent_cls.__name__, field_name)
 
     child_model = fk._model  # noqa: SLF001
@@ -397,14 +429,13 @@ def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any
     if not is_tablerow_model(child_model):
         raise BackrefChildNotTableRow(parent_cls.__name__, field_name, getattr(child_model, "__name__", repr(child_model)))
 
-    # has_many is `Rows[Child]`; has_one is a bare scalar `Child`.
-    _, unwrapped = _unwrap_optional_type(full_type)
-    is_many = get_origin(unwrapped) is Rows
-    annotated_model = get_args(unwrapped)[0] if is_many else unwrapped
     if annotated_model is not child_model:
         raise BackrefCardinalityMismatch(parent_cls.__name__, field_name, child_model.__name__, getattr(annotated_model, "__name__", repr(annotated_model)))
 
-    child_field = child_model.__fields_by_name__.get(fk_name)
+    # Self-referential child is `parent_cls` still mid-compile; read its fields
+    # from the locally-built map rather than the unset attribute.
+    child_fields_by_name = parent_fields_by_name if child_model is parent_cls else child_model.__fields_by_name__
+    child_field = child_fields_by_name.get(fk_name)
     if child_field is None or not child_field.is_fk or child_field.type is not parent_cls:
         raise BackrefFkMismatch(parent_cls.__name__, field_name, child_model.__name__, fk_name)
 

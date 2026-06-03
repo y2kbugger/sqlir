@@ -1,6 +1,5 @@
 # WIP
 - Backport unfetched sentinel style to orinal Lazy from LazyCollection
-- Annotate style backref
 - can we compress these into just a dict fields?
     cls.__lazy_relations__ = lazy_relations
     cls.__lazy_field_names__ = frozenset(name for _, name, _ in lazy_relations)
@@ -238,3 +237,8 @@ approx 20% perf boost for execute many on 20k rows, not worth it, yet
   - For types msgspec can't handle, convert at the application layer before storing
 - push lazy field making from cursor proxy to adaptconvert?
     - no, becuase the engine scope/ref isn't available in adapt/convert.
+- `Annotated`-style backref metadata, e.g. `players: Annotated[Rows[Player], Player.squad] = backref()`
+  - Motivation was to let the FK reference resolve lazily (via the deferred annotation) so the child could be defined *after* the parent, removing the child-first ordering constraint.
+  - It works technically: in 3.14 the annotation isn't evaluated until `get_type_hints()`, so `Annotated[Rows[Child], Child.parent]` resolves fine at compile time even with forward refs, and the metadata is readable via `__metadata__`.
+  - REJECTED because the ergonomics are worse: every backref becomes `field: Annotated[Rows[Child], Child.fk] = backref()` — the FK is now duplicated conceptually (annotation slot + empty `backref()` call), the `backref()` call carries no information, and the line is noisier than `field: Rows[Child] = backref(fk=Child.fk)`.
+  - The same lazy-resolution goal is covered more cheaply by also allowing the fully-qualified string form `backref(fk="Child.parent")`. That keeps the clean `backref(fk=...)` surface, mirrors the typed `Child.parent` spelling, and already covers the awkward cases (self-referential or parent-first declarations) without moving metadata into `Annotated`.

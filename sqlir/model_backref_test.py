@@ -1,9 +1,10 @@
 """Backref (reverse relationship) declaration, navigation, and predicates.
 
-A backref is declared with the `backref()` field specifier and an explicit,
-non-stringly forward-FK reference (e.g. `backref(fk=Player.squad)`). It is a
-*virtual* field: it backs no column and never appears in SQL. `list[Child]`
-is has_many; a scalar `Child` is has_one.
+A backref is declared with the `backref()` field specifier and either a typed
+forward-FK reference (e.g. `backref(fk=Player.squad)`) or the equivalent
+fully-qualified string (`backref(fk="Player.squad")`). It is a *virtual*
+field: it backs no column and never appears in SQL. `list[Child]` is has_many;
+a scalar `Child` is has_one.
 """
 
 from textwrap import dedent
@@ -21,7 +22,8 @@ from .model import (
 )
 from .sql import build_create_table_sql, build_insert_sql, build_select_sql
 
-# --- has_many / has_one (define child-first so `fk=Child.parent` resolves) ---
+# --- has_many / has_one (the typed `fk=Child.parent` form resolves eagerly,
+# so these examples stay child-first) ---
 
 
 class Player(TableRow):
@@ -76,6 +78,46 @@ class Student(TableRow):
 class Course(TableRow):
     title: str
     enrollments: Rows[Enrollment] = backref(fk=Enrollment.course)
+
+
+# --- string fk form (can be used generally; here it also allows parent-first
+# declaration because the child model is resolved later) ---
+
+
+class StringSquad(TableRow):
+    name: str
+    players: Rows[StringPlayer] = backref(fk="StringPlayer.squad")
+
+
+class StringPlayer(TableRow):
+    name: str
+    squad: StringSquad
+    number: int
+
+
+# --- self-referential; the same string form also covers the in-class self ref ---
+
+
+class Node(TableRow):
+    name: str
+    parent: Node | None
+    children: Rows[Node] = backref(fk="Node.parent")
+
+
+# Negative string-fk cases (module-level so the forward ref resolves; errors
+# still surface lazily at first `__fields__` access).
+
+
+class BareStringNode(TableRow):
+    name: str
+    parent: BareStringNode | None
+    children: Rows[BareStringNode] = backref(fk="parent")  # bare field name, not "Model.field"
+
+
+class WrongModelNode(TableRow):
+    name: str
+    parent: WrongModelNode | None
+    children: Rows[WrongModelNode] = backref(fk="Node.parent")  # names a different model
 
 
 def dd(sql: str) -> str:
@@ -196,6 +238,55 @@ def test_many_to_many_navigation_through_join(engine: Engine) -> None:
     assert {e.course.title for e in alice.enrollments} == {"Math", "Art"}
 
 
+def test_string_fk_can_define_parent_before_child(engine: Engine) -> None:
+    engine.ensure_table_created(StringSquad)
+    engine.ensure_table_created(StringPlayer)
+
+    squad = engine.insert(StringSquad(name="Reds"))
+    engine.insert(StringPlayer(name="Alice", squad=squad, number=1))
+    engine.insert(StringPlayer(name="Bob", squad=squad, number=2))
+
+    fetched = engine.find(StringSquad, squad.id)
+    assert {player.name for player in fetched.players} == {"Alice", "Bob"}
+
+
+# ---------------------------------------------------------------------------
+# Self-referential string-fk backref
+# ---------------------------------------------------------------------------
+
+
+def test_self_referential_backref_metadata() -> None:
+    (rel,) = Node.__backref_by_name__.values()
+    assert rel.name == "children"
+    assert rel.child_model is Node  # the model points back at itself
+    assert rel.fk_name == "parent"
+    assert rel.is_many is True
+
+
+def test_self_referential_backref_navigation(engine: Engine) -> None:
+    engine.ensure_table_created(Node)
+
+    root = engine.insert(Node(name="root", parent=None))
+    engine.insert(Node(name="a", parent=root))
+    engine.insert(Node(name="b", parent=root))
+
+    fetched = engine.find(Node, root.id)
+    assert {child.name for child in fetched.children} == {"a", "b"}
+
+
+def test_self_referential_reverse_predicate(engine: Engine) -> None:
+    engine.ensure_table_created(Node)
+
+    root = engine.insert(Node(name="root", parent=None))
+    leaf = engine.insert(Node(name="leaf", parent=root))
+    engine.insert(Node(name="lonely", parent=None))
+
+    # Parents that have a child named "leaf" -> only root.
+    parents = engine.select(Node, Node.children[0].name == "leaf").fetchall()
+    assert {n.name for n in parents} == {"root"}
+    assert leaf.name == "leaf"
+
+
 # ---------------------------------------------------------------------------
 # Predicates (reverse EXISTS — no fan-out)
 # ---------------------------------------------------------------------------
@@ -258,13 +349,16 @@ def test_many_to_many_predicate_through_join(engine: Engine) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_backref_requires_field_reference_not_string() -> None:
-    class Stringy(TableRow):
-        name: str
-        players: Rows[Player] = backref(fk="squad")
-
+def test_backref_rejects_bare_string_fk() -> None:
+    # String fk references must be fully-qualified as "Model.field".
     with pytest.raises(BackrefFkNotFieldReference):
-        _ = Stringy.__fields__
+        _ = BareStringNode.__fields__
+
+
+def test_backref_rejects_mismatched_model_in_string_fk() -> None:
+    # The "Model" part of the string must match the annotated child model.
+    with pytest.raises(BackrefFkNotFieldReference):
+        _ = WrongModelNode.__fields__
 
 
 def test_backref_fk_must_point_back_at_parent() -> None:

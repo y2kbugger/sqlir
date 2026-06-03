@@ -129,9 +129,10 @@ Foreign-key traversal is lowered to either **EXISTS semi-joins** in or **scalar 
 ## Backrefs
 
 A backref is a virtual reverse relationship declared on the parent with the
-`backref()` field specifier and an explicit forward-FK reference. Cardinality
-comes from the annotation: `Rows[Child]` is has_many, a bare scalar `Child` is
-has_one. The child must be defined **before** the parent.
+`backref()` field specifier and an explicit forward-FK reference. `fk=` may be
+either the typed field reference `Child.parent` or the equivalent
+fully-qualified string `"Child.parent"`. Cardinality comes from the
+annotation: `Rows[Child]` is has_many, a bare scalar `Child` is has_one.
 
 ```python
 class Player(TableRow):
@@ -141,6 +142,18 @@ class Player(TableRow):
 class Squad(TableRow):
     name: str
     players: Rows[Player] = backref(fk=Player.squad)   # reverse (parent -> children)
+```
+
+The typed form is refactor-safe, but it is evaluated while the parent's class
+body runs, so it still wants the child defined **before** the parent. The
+string form resolves lazily instead, so it is also available for parent-first
+or self-referential declarations:
+
+```python
+class Node(TableRow):
+    name: str
+    parent: "Node | None"                              # forward FK to itself
+    children: Rows["Node"] = backref(fk="Node.parent") # reverse (string form)
 ```
 
 Backref fields back no column and never enter SQL. Navigation materializes
