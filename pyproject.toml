@@ -13,10 +13,12 @@ dependencies = [
 [project.scripts]
 sqlir-migrate = "sqlir.migrate_cli:main"
 
-[dependency-groups]
+[project.optional-dependencies]
 migrate = [
     "ansicolors>=1.1.8",
 ]
+
+[dependency-groups]
 dev = [
     "pytest",
     "ruff",

@@ -1078,6 +1078,11 @@ dependencies = [
     { name = "msgspec" },
 ]
 
+[package.optional-dependencies]
+migrate = [
+    { name = "ansicolors" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pre-commit" },
@@ -1092,9 +1097,6 @@ examplenotebook = [
     { name = "networkx" },
     { name = "pandas" },
 ]
-migrate = [
-    { name = "ansicolors" },
-]
 profiling = [
     { name = "scalene" },
     { name = "snakeviz" },
@@ -1102,9 +1104,11 @@ profiling = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ansicolors", marker = "extra == 'migrate'", specifier = ">=1.1.8" },
     { name = "apsw", specifier = ">=3.51.1.0" },
     { name = "msgspec", specifier = ">=0.19.0" },
 ]
+provides-extras = ["migrate"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1120,7 +1124,6 @@ examplenotebook = [
     { name = "networkx", specifier = "~=3.5" },
     { name = "pandas" },
 ]
-migrate = [{ name = "ansicolors", specifier = ">=1.1.8" }]
 profiling = [
     { name = "scalene", specifier = ">=1.5.51,<2" },
     { name = "snakeviz", specifier = ">=2.2.2,<3" },
