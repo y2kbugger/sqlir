@@ -1087,11 +1087,13 @@ dev = [
     { name = "ty" },
 ]
 examplenotebook = [
-    { name = "ansicolors" },
     { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "networkx" },
     { name = "pandas" },
+]
+migrate = [
+    { name = "ansicolors" },
 ]
 profiling = [
     { name = "scalene" },
@@ -1113,12 +1115,12 @@ dev = [
     { name = "ty" },
 ]
 examplenotebook = [
-    { name = "ansicolors", specifier = ">=1.1.8" },
     { name = "ipykernel" },
     { name = "matplotlib", specifier = ">=3.10.3,<4" },
     { name = "networkx", specifier = "~=3.5" },
     { name = "pandas" },
 ]
+migrate = [{ name = "ansicolors", specifier = ">=1.1.8" }]
 profiling = [
     { name = "scalene", specifier = ">=1.5.51,<2" },
     { name = "snakeviz", specifier = ">=2.2.2,<3" },

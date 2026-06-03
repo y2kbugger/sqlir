@@ -14,6 +14,9 @@ dependencies = [
 sqlir-migrate = "sqlir.migrate_cli:main"
 
 [dependency-groups]
+migrate = [
+    "ansicolors>=1.1.8",
+]
 dev = [
     "pytest",
     "ruff",
@@ -26,7 +29,6 @@ examplenotebook = [
     "pandas",
     "matplotlib>=3.10.3,<4",
     "networkx~=3.5",
-    "ansicolors>=1.1.8",
 ]
 profiling = [
     "snakeviz>=2.2.2,<3",
