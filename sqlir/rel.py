@@ -79,13 +79,8 @@ class FieldExpr(Expr):
         model = self._model
         if model is None:
             return None
-        field = model.__fields_by_name__.get(self._name)
-        if field is not None and field.is_fk:
-            return field.type
-        backref = model.__backref_by_name__.get(self._name)
-        if backref is not None:
-            return backref.child_model
-        return None
+        ref = model.__refs_by_name__.get(self._name)
+        return ref.target if ref is not None else None
 
     def __getattr__(self, item: str) -> FieldExpr:
         if item.startswith("_"):
@@ -97,13 +92,11 @@ class FieldExpr(Expr):
                 f"cannot access {item!r} on {self!r}: field type is not a foreign-key model",
             )
 
-        fields_by_name = target.__fields_by_name__
-        backref_by_name = target.__backref_by_name__
-        if item in fields_by_name:
-            field = fields_by_name[item]
-            next_target = field.type if field.is_fk else None
-        elif item in backref_by_name:
-            next_target = backref_by_name[item].child_model
+        ref = target.__refs_by_name__.get(item)
+        if ref is not None:
+            next_target = ref.target
+        elif item in target.__fields_by_name__:
+            next_target = None  # a terminal (non-navigable) field
         else:
             raise AttributeError(f"{target.__name__!r} has no field {item!r}")
         return FieldExpr(f"{self._name}.{item}", self._model, target_model=next_target)

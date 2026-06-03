@@ -9,7 +9,7 @@ import logging
 import types
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, Union, cast, dataclass_transform, get_args, get_origin, get_type_hints
+from typing import Any, Union, cast, dataclass_transform, get_args, get_origin, get_type_hints
 
 import apsw
 
@@ -55,9 +55,7 @@ _COMPILED_CACHE_ATTRS = frozenset(
         "__tablename__",
         "__fields__",
         "__fields_by_name__",
-        "__lazy_relations__",
-        "__lazy_field_names__",
-        "__backref_by_name__",
+        "__refs_by_name__",
         "__converter__",
     }
 )
@@ -66,7 +64,8 @@ _COMPILED_CACHE_ATTRS = frozenset(
 type RowConverter = Callable[[apsw.SQLiteValues], tuple[Any, ...]]
 
 
-class ModelField(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class ModelField:
     name: str
     type: type
     full_type: Any  # e.g. includes Optional
@@ -77,11 +76,21 @@ class ModelField(NamedTuple):
     sql_columndef: str
 
 
-class BackrefRelation(NamedTuple):
-    name: str  # the virtual field name on the parent (e.g. "members")
-    child_model: type  # the model holding the forward FK (e.g. Athlete)
-    fk_name: str  # the child's FK field pointing back at the parent (e.g. "team")
-    is_many: bool  # True for list[Child] (has_many), False for scalar Child (has_one)
+@dataclass(frozen=True, slots=True)
+class Ref:
+    """A navigable reference — forward FK or backref  for {target}.{name}
+
+    Join columns are precomputed so traversal/SQL never re-branch on direction:
+    the predicate is always `{far_alias}.{far_col} = {near_alias}.{near_col}`.
+    """
+
+    name: str
+    target: type[TableRow]
+    near_col: str  # source-side join column (the FK column forward, "id" for a backref)
+    far_col: str  # target-side join column ("id" forward, the child FK for a backref)
+    is_back: bool  # reverse (queried children) vs forward (stored FK column)
+    is_collection: bool  # many (Rows) vs a single row / None
+    index: int  # FK value's column index in a fetched row (forward only; -1 for a backref)
 
 
 def _uncompiled_rowconverter(_: apsw.SQLiteValues) -> tuple[Any, ...]:
@@ -115,9 +124,7 @@ class RowMeta(type):
     __tablename__: str
     __fields__: tuple[ModelField, ...]
     __fields_by_name__: dict[str, ModelField]
-    __lazy_relations__: tuple[tuple[int, str, type[TableRow]], ...]
-    __lazy_field_names__: frozenset[str]
-    __backref_by_name__: dict[str, BackrefRelation]
+    __refs_by_name__: dict[str, Ref]
     __converter__: RowConverter
     __select_query__: Any
     _is_dataclass_parsing: bool
@@ -144,9 +151,7 @@ class RowMeta(type):
         model_cls.__tablename__ = ns.get("__tablename__", typename)
         model_cls.__fields__ = ()
         model_cls.__fields_by_name__ = {}
-        model_cls.__lazy_relations__ = ()
-        model_cls.__lazy_field_names__ = frozenset()
-        model_cls.__backref_by_name__ = {}
+        model_cls.__refs_by_name__ = {}
         model_cls.__converter__ = _uncompiled_rowconverter
         model_cls.__select_query__ = ns.get("__select_query__")
         type.__setattr__(model_cls, "_tablename_is_default", "__tablename__" not in ns)
@@ -240,20 +245,22 @@ class RowMeta(type):
             if cls.__select_query__ is not None:
                 raise SelectQueryNotAllowedOnTableRow(cls.__name__)
 
-        lazy_relations = tuple((idx, field.name, cast(type[TableRow], field.type)) for idx, field in enumerate(fields) if field.is_fk)
-
         # A self-referential backref's child is `cls` itself, still mid-compile,
         # so its `__fields_by_name__` attr isn't set yet. Pass the locally-built
         # mapping so validation reads it without re-triggering compilation.
         own_fields_by_name = {field.name: field for field in fields}
-        backref_relations = tuple(_build_backref_relation(cls, name, annotations[name], fk, own_fields_by_name) for name, fk in backref_specs.items())
+        backref_refs = (_build_backref_ref(cls, name, annotations[name], fk, own_fields_by_name) for name, fk in backref_specs.items())
+
+        # Forward FKs and backrefs share one ref map so traversal, SQL, and lazy
+        # loading read a single shape.
+        forward_refs = (
+            Ref(name=f.name, target=cast(type[TableRow], f.type), near_col=f.name, far_col="id", is_back=False, is_collection=False, index=idx) for idx, f in enumerate(fields) if f.is_fk
+        )
 
         cls.__tablename__ = table_name
         cls.__fields__ = fields
         cls.__fields_by_name__ = {field.name: field for field in fields}
-        cls.__lazy_relations__ = lazy_relations
-        cls.__lazy_field_names__ = frozenset(name for _, name, _ in lazy_relations)
-        cls.__backref_by_name__ = {rel.name: rel for rel in backref_relations}
+        cls.__refs_by_name__ = {ref.name: ref for ref in (*forward_refs, *backref_refs)}
 
         type.__setattr__(cls, "_is_compiled", True)
 
@@ -281,19 +288,19 @@ class TableRow(metaclass=RowMeta):
 
         cls = type(self)
 
-        if name in cls.__lazy_field_names__:
-            if isinstance(value, Lazy):
-                return value._obj()  # materialize & return real row  # noqa: SLF001
+        ref = cls.__refs_by_name__.get(name)
+        if ref is None:
             return value
 
-        if name in cls.__backref_by_name__:
-            if isinstance(value, LazyCollection):
-                return value._obj()  # materialize & cache the reverse query  # noqa: SLF001
-            # Unmaterialized (a manually constructed, not-yet-loaded parent):
-            # there is no engine to query, so give an honest empty result.
-            return Rows() if cls.__backref_by_name__[name].is_many else None
+        if not ref.is_back:
+            # Forward FK: materialize the `Lazy` proxy on access.
+            return value._obj() if isinstance(value, Lazy) else value  # noqa: SLF001
 
-        return value
+        if isinstance(value, LazyCollection):
+            return value._obj()  # materialize & cache the reverse query  # noqa: SLF001
+        # Unmaterialized (a manually constructed, not-yet-loaded parent): there
+        # is no engine to query, so give an honest empty result.
+        return Rows() if ref.is_collection else None
 
     @classmethod
     def Id(cls, id_val: int | None) -> Any:
@@ -394,8 +401,8 @@ def is_tablerow_model(cls: object) -> bool:
     return isinstance(cls, type) and issubclass(cls, TableRow)
 
 
-def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any, fk: Any, parent_fields_by_name: dict[str, ModelField]) -> BackrefRelation:
-    """Validate one `backref()` declaration and lower it to a `BackrefRelation`.
+def _build_backref_ref(parent_cls: RowMeta, field_name: str, full_type: Any, fk: Any, parent_fields_by_name: dict[str, ModelField]) -> Ref:
+    """Validate one `backref()` declaration and lower it to a reverse `Ref`.
 
     `parent_fields_by_name` is the parent's locally-built field map; it is used
     instead of the not-yet-set `__fields_by_name__` attr when the backref is
@@ -405,8 +412,8 @@ def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any
 
     # has_many is `Rows[Child]`; has_one is a bare scalar `Child`.
     _, unwrapped = _unwrap_optional_type(full_type)
-    is_many = get_origin(unwrapped) is Rows
-    annotated_model = get_args(unwrapped)[0] if is_many else unwrapped
+    is_collection = get_origin(unwrapped) is Rows
+    annotated_model = get_args(unwrapped)[0] if is_collection else unwrapped
 
     # `fk` is a single forward-FK field reference, spelled either as the typed
     # `Child.team` (a `FieldExpr`) or the fully-qualified string `"Child.team"`.
@@ -439,7 +446,8 @@ def _build_backref_relation(parent_cls: RowMeta, field_name: str, full_type: Any
     if child_field is None or not child_field.is_fk or child_field.type is not parent_cls:
         raise BackrefFkMismatch(parent_cls.__name__, field_name, child_model.__name__, fk_name)
 
-    return BackrefRelation(name=field_name, child_model=child_model, fk_name=fk_name, is_many=is_many)
+    # Reverse hop: queried from the child side, joining child.<fk> back to our id.
+    return Ref(name=field_name, target=child_model, near_col="id", far_col=fk_name, is_back=True, is_collection=is_collection, index=-1)
 
 
 def has_select_query(Model: object) -> bool:

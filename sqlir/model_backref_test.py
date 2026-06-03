@@ -132,7 +132,7 @@ def dd(sql: str) -> str:
 def test_backref_field_is_virtual() -> None:
     assert [f.name for f in Squad.__fields__] == ["id", "name"]
     assert "players" not in {f.name for f in Squad.__fields__}
-    assert "players" in Squad.__backref_by_name__
+    assert Squad.__refs_by_name__["players"].is_back
 
 
 def test_backref_absent_from_ddl_and_insert() -> None:
@@ -141,14 +141,14 @@ def test_backref_absent_from_ddl_and_insert() -> None:
 
 
 def test_backref_relation_metadata() -> None:
-    (rel,) = Squad.__backref_by_name__.values()
+    rel = Squad.__refs_by_name__["players"]
     assert rel.name == "players"
-    assert rel.child_model is Player
-    assert rel.fk_name == "squad"
-    assert rel.is_many is True
+    assert rel.target is Player
+    assert rel.far_col == "squad"
+    assert rel.is_back is True
+    assert rel.is_collection is True
 
-    (one_rel,) = Citizen.__backref_by_name__.values()
-    assert one_rel.is_many is False
+    assert Citizen.__refs_by_name__["passport"].is_collection is False
 
 
 # ---------------------------------------------------------------------------
@@ -256,11 +256,11 @@ def test_string_fk_can_define_parent_before_child(engine: Engine) -> None:
 
 
 def test_self_referential_backref_metadata() -> None:
-    (rel,) = Node.__backref_by_name__.values()
+    rel = Node.__refs_by_name__["children"]
     assert rel.name == "children"
-    assert rel.child_model is Node  # the model points back at itself
-    assert rel.fk_name == "parent"
-    assert rel.is_many is True
+    assert rel.target is Node  # the model points back at itself
+    assert rel.far_col == "parent"
+    assert rel.is_collection is True
 
 
 def test_self_referential_backref_navigation(engine: Engine) -> None:

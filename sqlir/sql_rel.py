@@ -9,7 +9,7 @@ This module should only depend on `model.py` and `rel.py`
 """
 
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 
 from .model import RowMeta, TableRow
 from .rel import BinaryExpr, FieldExpr, LogicalExpr
@@ -33,14 +33,9 @@ def _walk_fk_hops(BaseModel: type[TableRow], attrs: list[str]) -> Iterator[tuple
     current_alias = base_table
     for attr in attrs:
         next_alias = f"{current_alias}_{attr}" if current_alias != base_table else attr
-        field = current_model.__fields_by_name__.get(attr)
-        if field is not None and field.is_fk:
-            next_model = cast(type[TableRow], field.type)
-            join = f"{next_alias}.id = {current_alias}.{attr}"
-        else:
-            backref = current_model.__backref_by_name__[attr]
-            next_model = cast(type[TableRow], backref.child_model)
-            join = f"{next_alias}.{backref.fk_name} = {current_alias}.id"
+        ref = current_model.__refs_by_name__[attr]
+        next_model = ref.target
+        join = f"{next_alias}.{ref.far_col} = {current_alias}.{ref.near_col}"
         yield current_alias, attr, next_model, next_alias, join
         current_model = next_model
         current_alias = next_alias

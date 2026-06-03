@@ -35,23 +35,23 @@ class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
         if is_tablerow_model(Model):
             assert issubclass(Model, TableRow)
             TableModel = cast(type[TableRow], Model)
-            lazy_relations = TableModel.__lazy_relations__
-            backref_relations = tuple(TableModel.__backref_by_name__.values())
+            forward_refs = tuple(rel for rel in TableModel.__refs_by_name__.values() if not rel.is_back)
+            backref_refs = tuple(rel for rel in TableModel.__refs_by_name__.values() if rel.is_back)
 
             def row_fac(c: apsw.Cursor, r: apsw.SQLiteValues) -> R:
                 root_row = convert(r)
                 row = Model(*root_row[1:], id=root_row[0])
 
-                for idx, field_name, related_model in lazy_relations:
-                    fk_value = root_row[idx]
+                for ref in forward_refs:
+                    fk_value = root_row[ref.index]
                     assert isinstance(fk_value, int | type(None))
                     if fk_value is not None:
-                        object.__setattr__(row, field_name, Lazy(engine, related_model, fk_value))
+                        object.__setattr__(row, ref.name, Lazy(engine, ref.target, fk_value))
 
                 parent_id = root_row[0]
                 if parent_id is not None:
-                    for rel in backref_relations:
-                        object.__setattr__(row, rel.name, LazyCollection(engine, cast(type[TableRow], rel.child_model), rel.fk_name, parent_id, rel.is_many))
+                    for ref in backref_refs:
+                        object.__setattr__(row, ref.name, LazyCollection(engine, ref.target, ref.far_col, parent_id, ref.is_collection))
 
                 return row
         else:

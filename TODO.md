@@ -1,8 +1,5 @@
 # WIP
 - Backport unfetched sentinel style to orinal Lazy from LazyCollection
-- can we compress these into just a dict fields?
-    cls.__lazy_relations__ = lazy_relations
-    cls.__lazy_field_names__ = frozenset(name for _, name, _ in lazy_relations)
 
 # Bugs
 

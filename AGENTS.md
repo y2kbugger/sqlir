@@ -52,6 +52,12 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 - **Ruff line length is 190.** Don't break long signatures for cosmetic reasons.
   Selected rule set is broad (`SLF`, `SIM`, `PTH`, `PD`, `ANN001`, `ANN201`,
   `RUF` ...); run `ruff check --fix` after edits.
+- **Record/value types are frozen dataclasses, not `NamedTuple`.** This library
+  is dataclass-based throughout (`Row`/`TableRow` compile to frozen dataclasses);
+  internal record types (`ModelField`, `Ref`, ...) follow suit with
+  `@dataclass(frozen=True, slots=True)`. Don't reach for `NamedTuple` — stay
+  consistent with the dataclass convention unless tuple unpacking/indexing is
+  genuinely required.
 - **Keep docstrings lean, push the "why" local.** Especially for internal
   helpers, the docstring should say *what* in a line or two; explain *why* a
   given step exists with a short inline comment right next to that code (e.g.
@@ -164,3 +170,15 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
     markdown cell, then a code cell with the fix. Treat each rough edge you smooth
     over as a candidate anti-pattern, the same way you codify conventions here.
 - We are on a new enough python that you need not use `from __future__ import annotations` not quote them as strings.
+- **Normalize variants into one first-class data structure at compile time.**
+    When several input spellings (typed vs string `fk=`) or several conceptual
+    kinds (forward FK vs reverse backref) all need the *same downstream
+    treatment*, lower them to a single normalized record (e.g. a `NamedTuple`)
+    and store it on the model once. Precompute the bits that would otherwise be
+    re-derived at every use site (e.g. join columns, so SQL never re-branches on
+    join direction). Downstream code (rel traversal, SQL generation, lazy
+    loading) then reads one uniform shape instead of re-discriminating the
+    original variants and threading extra context around. *Give me the data
+    structure and the code writes itself* — prefer adding fields to a shared
+    record over adding parallel branches in each consumer. Keep it concrete: one
+    record per real concept, not a speculative abstraction layer.
