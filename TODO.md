@@ -1,5 +1,4 @@
 # WIP
-- Backport unfetched sentinel style to orinal Lazy from LazyCollection
 
 # Bugs
 

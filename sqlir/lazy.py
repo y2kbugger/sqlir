@@ -27,6 +27,9 @@ class Rows[Model](tuple[Model, ...]):
         return f"Rows({list(self)!r})"
 
 
+_UNFETCHED = object()
+
+
 class Lazy[Model]:
     __slots__ = ("_cached", "_engine", "_id", "_model")
 
@@ -34,10 +37,10 @@ class Lazy[Model]:
         self._engine = engine
         self._model = model
         self._id = id_
-        self._cached = None
+        self._cached = _UNFETCHED
 
     def _obj(self) -> Model:
-        if self._cached is None:
+        if self._cached is _UNFETCHED:
             self._cached = self._engine.find(self._model, self._id)
         return cast(Model, self._cached)
 
@@ -56,12 +59,9 @@ class Lazy[Model]:
         return False
 
     def __repr__(self):
-        if self._cached is None:
+        if self._cached is _UNFETCHED:
             return f"<{self.__class__.__name__}[{self._model.__name__}]:{self._id} (pending)>"
         return f"<{self.__class__.__name__}:{self._cached!r}>"
-
-
-_UNFETCHED = object()
 
 
 class LazyCollection[Model]:
