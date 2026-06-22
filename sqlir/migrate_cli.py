@@ -4,6 +4,7 @@ import argparse
 import importlib
 import sys
 import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .migrate import Migrate, State, format_status
@@ -128,14 +129,55 @@ def cmd_backup(migrate: Migrate, args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_size(num_bytes: int) -> str:
+    """Human-readable file size (binary units)."""
+    size = float(num_bytes)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            precision = 0 if unit == "B" else 1
+            return f"{size:.{precision}f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TiB"  # unreachable, keeps type checker happy
+
+
+def _parse_backup_name(name: str, db_name: str) -> tuple[datetime | None, int | None]:
+    """Parse a backup filename into (local datetime, migration level).
+
+    Filenames look like ``2026-02-10T14-30-05.123456.003.mydb.sqlite``:
+    a UTC timestamp, the highest applied migration number captured in the
+    snapshot, then the DB name. Returns ``(None, None)`` parts that cannot be
+    parsed (e.g. a foreign file in the .bak dir).
+    """
+    suffix = f".{db_name}"
+    if not name.endswith(suffix):
+        return None, None
+    stem = name[: -len(suffix)]  # e.g. 2026-02-10T14-30-05.123456.003
+    ts_part, _, level_part = stem.rpartition(".")
+    try:
+        level = int(level_part)
+    except ValueError:
+        return None, None
+    try:
+        # Stored in UTC; render in the host's local timezone.
+        dt = datetime.strptime(ts_part, "%Y-%m-%dT%H-%M-%S.%f").replace(tzinfo=UTC).astimezone()
+    except ValueError:
+        return None, level
+    return dt, level
+
+
 def _list_backups(migrate: Migrate) -> None:
-    """Print available backups to stdout."""
+    """Print available backups to stdout, newest first."""
     backups = migrate.list_backups()
     if not backups:
         print("No snapshots found")
     else:
+        print("  #   when (local)          migration  size       file")
         for i, b in enumerate(backups, 1):
-            print(f"  {i}. {b.name}")
+            dt, level = _parse_backup_name(b.name, migrate.db_path.name)
+            when = dt.strftime("%Y-%m-%d %H:%M:%S") if dt else "?"
+            mig = f"{level:03d}" if level is not None else "?"
+            size = _format_size(b.stat().st_size)
+            print(f"  {i:<3} {when:<21} {mig:^9}  {size:>9}  {b.name}")
     if migrate.ref_path.exists():
         print(f"  ref: {migrate.ref_path.name}")
 

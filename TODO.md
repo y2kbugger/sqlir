@@ -1,6 +1,8 @@
 # WIP
 
 # Bugs
+- Order does not yet accespt t-stringjs
+- ruff complains about comparison to True, e.g. `if x == True` should be `if x` (is this supported by the Rel rendered)?
 
 
 # Testing

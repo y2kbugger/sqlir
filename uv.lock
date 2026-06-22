@@ -1089,6 +1089,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-benchmark" },
     { name = "ruff" },
+    { name = "sqlir", extra = ["migrate"] },
     { name = "ty" },
 ]
 examplenotebook = [
@@ -1116,6 +1117,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-benchmark", specifier = ">=5.1.0,<6" },
     { name = "ruff" },
+    { name = "sqlir", extras = ["migrate"] },
     { name = "ty" },
 ]
 examplenotebook = [

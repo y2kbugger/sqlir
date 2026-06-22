@@ -20,6 +20,13 @@ mydb.sqlite.bak/
     2026-11-20T09-15-42.456789.001.mydb.sqlite
 ```
 
+Backup filenames are `<utc-timestamp>.<migration_level>.<db_name>`. The
+`<migration_level>` is the highest migration number **already applied at the
+moment the snapshot was taken** — the schema state captured *inside* the
+backup. Since a backup is taken right before each `apply()`, this is the level
+*before* the next migration runs (`.000` = empty DB, `.001` = migration 001
+applied, …). Restoring a `.NNN` backup rewinds the DB to that level.
+
 ## States
 
 Priority: ERROR > CONFLICTED > DIVERGED > PENDING > MISMATCH > CURRENT.

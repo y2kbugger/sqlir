@@ -715,12 +715,19 @@ class Migrate:
     def backup(self) -> Path:
         """Create a timestamped backup of the working DB using SQLite backup API.
 
-        Backup is stored in ``<db>.bak/<timestamp>.<highest_migration_num>.<db_name>``
+        Backup is stored in ``<db>.bak/<timestamp>.<migration_level>.<db_name>``
         e.g.  ``mydb.sqlite.bak/2026-02-10T14-30-05.123456.003.mydb.sqlite``
 
-        The filename sorts lexically by time, encodes the highest applied
-        migration number for quick identification, and avoids characters
-        (like ``:``) that are illegal on Windows.
+        The filename sorts lexically by time and avoids characters (like ``:``)
+        that are illegal on Windows. ``<timestamp>`` is UTC.
+
+        ``<migration_level>`` is the **highest migration number already applied
+        to the DB at the moment the snapshot is taken** — i.e. the schema state
+        *captured inside* this backup. Because ``backup()`` is called right
+        *before* ``apply()``, this is the highest applied migration *before* the
+        next migration runs. So a file tagged ``.003`` contains a DB with
+        migrations up to and including 003 applied (004 not yet applied); restoring
+        it rewinds the DB to that level. A fresh DB with nothing applied is ``000``.
 
         Returns the path to the created backup file.
         """
@@ -728,7 +735,7 @@ class Migrate:
 
         self.backup_dir.mkdir(exist_ok=True)
 
-        # Determine highest applied migration number
+        # Highest applied migration number = the schema level captured in this snapshot.
         applied = self._get_applied_migrations()
         highest = max(applied.keys()) if applied else 0
 

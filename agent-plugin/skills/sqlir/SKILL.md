@@ -51,6 +51,7 @@ Two reference files are bundled alongside this skill. Read them on demand:
   refactor-safe.
 - remember Cursors are iterable, so avoid `fetchall()`; whenever possible, just iterate directly (`for user in engine.select(User, ...)`).
 - when using looking up by id in find/update/delete, just pass the id as an int directly (`e.find(User, id)`), you do not need a predicate like `User.id == id` (though that also works but is NOT idiomatic).
+- Dont use e._query, instead bind raw SQL to `Row` model definitions via M.__select_query__
 
 ## sqlir is UNDER ACTIVE DEVELOPMENT
 - Please, summarize quirks/bugs that you had to work around after finishing your task, and share them with the maintainers.
