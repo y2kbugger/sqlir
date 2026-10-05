@@ -47,6 +47,19 @@ so a migration creating the tables they reference is generated first.
 | `CONFLICTED` | Scripts differ from ref DB | `restore_scripts()` → CURRENT or DIVERGED |
 | `ERROR` | Bad migration files (gaps, dupes) | Manual fix |
 
+### Declarative scripts
+
+`mydb.sqlite.migrations/views_indexes_triggers/*.sql` hold views, indexes,
+and triggers. They are idempotent, run in filename order, always **after** the
+numbered migrations, and are pending when:
+
+- their content changed since they were last applied, or
+- a numbered migration is pending, or was applied after them — a generated
+  migration rebuilds a changed table with `DROP TABLE` + `CREATE TABLE`, which
+  drops its indexes and triggers, so they must be re-run.
+
+A long-lived DB and a fresh one therefore end up with the same schema.
+
 ### State Transitions Diagram
 
 ```

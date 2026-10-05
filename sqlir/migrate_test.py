@@ -1321,3 +1321,34 @@ def test_migrate__declarative__schema_mismatch_takes_precedence_over_declarative
         migrate.apply(script)
     assert migrate.check().state == State.CURRENT
     assert _index_exists(migrate, "User_name")
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__declarative__reapplied_after_numbered_migration(migrate: Migrate):
+    """A numbered migration may rebuild a table (dropping its indexes), so every declarative script re-runs after it."""
+    migrate.declarative_dir.mkdir(parents=True)
+    (migrate.declarative_dir / "010.idx.sql").write_text(_USER_NAME_INDEX)
+    migrate.generate()
+    for script in migrate.check().pending:
+        migrate.apply(script)
+    migrate.save_ref()
+    assert migrate.check().state == State.CURRENT
+
+    create_sql = (migrate.migrations_dir / "001.create_user.sql").read_text()
+    (migrate.migrations_dir / "002.rebuild_user.sql").write_text(f"DROP TABLE User;\n\n{create_sql}")
+
+    # Known up front: the declarative script must follow the pending numbered one.
+    result = migrate.check()
+    assert result.pending == ["002.rebuild_user.sql", "views_indexes_triggers/010.idx.sql"]
+    assert result.ref_pending == ["002.rebuild_user.sql", "views_indexes_triggers/010.idx.sql"]
+
+    # Applying only the numbered migration drops the index and leaves the declarative script pending.
+    migrate.apply("002.rebuild_user.sql")
+    assert not _index_exists(migrate, "User_name")
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["views_indexes_triggers/010.idx.sql"]
+
+    migrate.apply("views_indexes_triggers/010.idx.sql")
+    assert migrate.check().state == State.CURRENT
+    assert _index_exists(migrate, "User_name")

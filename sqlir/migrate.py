@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
+from typing import cast
 
 import apsw
 import colors as clr
@@ -235,6 +236,18 @@ def make_status_summary(result: CheckResult) -> str:
     return f"{label}: {detail}"
 
 
+def _current_declarative_scripts(applied: dict[int, Migration]) -> dict[str, str]:
+    """Latest recorded script per declarative filename, omitting any applied before the latest numbered migration."""
+    last_numbered_at = max((m.finished_at for n, m in applied.items() if n > 0), default="")
+    # Negative ids are append-only and get more negative over time.
+    latest: dict[str, tuple[int, Migration]] = {}
+    for n, m in sorted(applied.items(), reverse=True):
+        if n < 0:
+            latest[m.filename] = (n, m)
+    # A numbered migration can DROP/CREATE a table, silently dropping indexes and triggers declared before it.
+    return {name: m.script for name, (_n, m) in latest.items() if m.started_at >= last_numbered_at}
+
+
 def _backup_with_retry(backup: apsw.Backup, *, retries: int = 8, delay: float = 0.1) -> None:
     """Drive a single apsw backup to completion, retrying on BusyError.
 
@@ -302,17 +315,13 @@ class Migrate:
         """Create _migrations table if it doesn't exist (dogfoods ensure_table_created)."""
         self.engine.ensure_table_created(Migration)
 
-    def _get_applied_migrations(self) -> dict[int, tuple[str, str]]:
-        """Get applied migrations as {id: (filename, script)} from _migrations table."""
+    def _get_applied_migrations(self) -> dict[int, Migration]:
+        """Get applied migrations as {id: row} from _migrations table."""
         self._ensure_migrations_table()
-        applied: dict[int, tuple[str, str]] = {}
-        for row in self.engine.select(Migration):
-            assert row.id is not None
-            applied[int(row.id)] = (row.filename, row.script)
-        return applied
+        return {cast(int, row.id): row for row in self.engine.select(Migration)}
 
-    def _get_ref_applied_migrations(self) -> dict[int, tuple[str, str]]:
-        """Get applied migrations from the .ref DB as {id: (filename, script)}.
+    def _get_ref_applied_migrations(self) -> dict[int, Migration]:
+        """Get applied migrations from the .ref DB as {id: row}.
 
         Returns empty dict if .ref doesn't exist or has no _migrations table.
         """
@@ -323,11 +332,7 @@ class Migrate:
         if ref_engine.select(SqliteMaster, (SqliteMaster.type == "table") & (SqliteMaster.name == "_migrations"), limit=1).fetchone() is None:
             return {}
 
-        applied: dict[int, tuple[str, str]] = {}
-        for row in ref_engine.select(Migration):
-            assert row.id is not None
-            applied[int(row.id)] = (row.filename, row.script)
-        return applied
+        return {cast(int, row.id): row for row in ref_engine.select(Migration)}
 
     def _validate_migration_files(self, files: list[tuple[int, str, Path]]) -> list[str]:
         """Validate migration files in the migrations directory.
@@ -392,35 +397,13 @@ class Migrate:
         files = self._get_migration_files()
         applied_all = self._get_applied_migrations()
         ref_applied_all = self._get_ref_applied_migrations()
-        applied = {n: v for n, v in applied_all.items() if n > 0}
-        ref_applied = {n: v for n, v in ref_applied_all.items() if n > 0}
+        applied = {n: (m.filename, m.script) for n, m in applied_all.items() if n > 0}
+        ref_applied = {n: (m.filename, m.script) for n, m in ref_applied_all.items() if n > 0}
         ref_pending = []
 
         declarative_files = self._get_declarative_files()
-
-        # For declarative scripts, keep the latest recorded script per filename.
-        # Negative ids are append-only and get more negative over time.
-        declarative_applied_latest: dict[str, str] = {}
-        if applied_all:
-            by_filename: dict[str, tuple[int, str]] = {}
-            for migration_id, (recorded_filename, recorded_script) in applied_all.items():
-                if migration_id >= 0:
-                    continue
-                prev = by_filename.get(recorded_filename)
-                if prev is None or migration_id < prev[0]:
-                    by_filename[recorded_filename] = (migration_id, recorded_script)
-            declarative_applied_latest = {name: script for name, (_id, script) in by_filename.items()}
-
-        declarative_ref_latest: dict[str, str] = {}
-        if ref_applied_all:
-            by_filename_ref: dict[str, tuple[int, str]] = {}
-            for migration_id, (recorded_filename, recorded_script) in ref_applied_all.items():
-                if migration_id >= 0:
-                    continue
-                prev = by_filename_ref.get(recorded_filename)
-                if prev is None or migration_id < prev[0]:
-                    by_filename_ref[recorded_filename] = (migration_id, recorded_script)
-            declarative_ref_latest = {name: script for name, (_id, script) in by_filename_ref.items()}
+        declarative_applied_latest = _current_declarative_scripts(applied_all)
+        declarative_ref_latest = _current_declarative_scripts(ref_applied_all)
 
         # Validate migration files
         errors = self._validate_migration_files(files)
@@ -456,14 +439,17 @@ class Migrate:
                 if current_script != ref_script:
                     conflicted.append(path.name)
 
+        # A pending numbered migration may rebuild tables, so every declarative script must re-run after it.
+        numbered_pending = bool(pending)
+        numbered_ref_pending = bool(ref_pending)
         for path in declarative_files:
             rel_name = f"{self.declarative_dir.name}/{path.name}"
             current_script = path.read_text().replace("\r\n", "\n")
 
-            if declarative_applied_latest.get(rel_name) != current_script:
+            if numbered_pending or declarative_applied_latest.get(rel_name) != current_script:
                 pending.append(rel_name)
 
-            if declarative_ref_latest.get(rel_name) != current_script:
+            if numbered_ref_pending or declarative_ref_latest.get(rel_name) != current_script:
                 ref_pending.append(rel_name)
 
         # Check for applied migrations with missing files (working DB)
@@ -783,7 +769,7 @@ class Migrate:
         self.migrations_dir.mkdir(exist_ok=True)
 
         # Restore scripts from ref DB, overwriting or creating files as needed
-        for _n, (ref_filename, ref_script) in ref_applied.items():
-            if ref_filename in result.conflicted + result.conflicted_missing:
-                filepath = self.migrations_dir / ref_filename
-                filepath.write_text(ref_script)
+        for m in ref_applied.values():
+            if m.filename in result.conflicted + result.conflicted_missing:
+                filepath = self.migrations_dir / m.filename
+                filepath.write_text(m.script)
