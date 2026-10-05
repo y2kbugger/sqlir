@@ -7,6 +7,8 @@ import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
+import apsw
+
 from .migrate import Migrate, State, format_status
 from .model import TableRow
 
@@ -113,10 +115,21 @@ def cmd_apply(migrate: Migrate, args: argparse.Namespace) -> int:
 
     for script in to_apply:
         migrate.backup()
-        migrate.apply(script)
-        print(f"Applied {script}")
+        if not _apply_script(migrate, script):
+            return 1
 
     return 0
+
+
+def _apply_script(migrate: Migrate, script: str) -> bool:
+    """Apply one script, reporting a SQL failure as a message rather than a traceback."""
+    try:
+        migrate.apply(script)
+    except apsw.Error as e:
+        print(f"Failed to apply {script}: {type(e).__name__}: {e}")
+        return False
+    print(f"Applied {script}")
+    return True
 
 
 def cmd_backup(migrate: Migrate, args: argparse.Namespace) -> int:
@@ -265,8 +278,8 @@ def _dev_step(migrate: Migrate, *, prev_state: State | None = None) -> int:
         case State.PENDING:
             migrate.backup()
             for script in result.pending:
-                migrate.apply(script)
-                print(f"Applied {script}")
+                if not _apply_script(migrate, script):
+                    return 1
             return _dev_step(migrate, prev_state=result.state)
         case State.MISMATCH:
             path = migrate.generate()

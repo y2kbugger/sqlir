@@ -426,3 +426,38 @@ def test_e2e_fails_without_db_path_and_models_module(tmp_path: Path) -> None:
     """CLI errors when --db-path and --models-module are missing."""
     r = _run_cli("status", cwd=tmp_path)
     assert r.returncode != 0
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_cli_dev_new_model_with_declarative_index(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """dev generates/applies the table migration before a declarative script that indexes it."""
+    migrate.declarative_dir.mkdir(parents=True)
+    (migrate.declarative_dir / "010.idx.sql").write_text("CREATE UNIQUE INDEX IF NOT EXISTS User_name ON User(name);\n")
+
+    code = cmd_dev(migrate, _ns())
+    assert code == 0
+    out = capsys.readouterr().out
+    assert out.index("Applied 001.create_user.sql") < out.index("Applied views_indexes_triggers/010.idx.sql")
+    assert migrate.check().state == State.CURRENT
+
+
+@pytest.mark.scenario("empty_db")
+def test_cli_dev_bad_declarative_script_is_clean_error(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """A failing script is reported as an error message, not a traceback."""
+    migrate.declarative_dir.mkdir(parents=True)
+    (migrate.declarative_dir / "010.bad.sql").write_text("CREATE INDEX x ON nonexistent_table(a);\n")
+
+    assert cmd_dev(migrate, _ns()) == 1
+    out = capsys.readouterr().out
+    assert "Failed to apply views_indexes_triggers/010.bad.sql" in out
+    assert "no such table" in out
+
+
+@pytest.mark.scenario("empty_db")
+def test_cli_apply_bad_declarative_script_is_clean_error(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    migrate.declarative_dir.mkdir(parents=True)
+    (migrate.declarative_dir / "010.bad.sql").write_text("CREATE INDEX x ON nonexistent_table(a);\n")
+
+    assert cmd_apply(migrate, _ns(filename=None)) == 1
+    out = capsys.readouterr().out
+    assert "Failed to apply views_indexes_triggers/010.bad.sql" in out

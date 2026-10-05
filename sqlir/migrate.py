@@ -92,10 +92,14 @@ class CheckResult:
             return State.CONFLICTED
         if self.divergent or self.divergent_missing:
             return State.DIVERGED
-        if self.pending:
+        # Declarative scripts may reference tables that only a not-yet-generated
+        # migration creates, so generate before running them.
+        if any(_parse_migration_number(f) is not None for f in self.pending):
             return State.PENDING
         if self.has_schema_mismatch:
             return State.MISMATCH
+        if self.pending:
+            return State.PENDING
         return State.CURRENT
 
     def status_lines(self) -> list[tuple[bool, str, str, str, str]]:

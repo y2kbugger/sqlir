@@ -35,6 +35,8 @@ applied, …). Restoring a `.NNN` backup rewinds the DB to that level.
 ## States
 
 Priority: ERROR > CONFLICTED > DIVERGED > PENDING > MISMATCH > CURRENT.
+Exception: when the only pending scripts are declarative ones, MISMATCH wins,
+so a migration creating the tables they reference is generated first.
 
 | State | Meaning | Fix |
 |-------|---------|-----|

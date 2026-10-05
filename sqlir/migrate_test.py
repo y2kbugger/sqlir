@@ -1211,7 +1211,7 @@ def test_migrate__declarative__init_creates_scaffold(migrate: Migrate):
     assert "views_indexes_triggers/010.views.sql" in result.pending
 
 
-@pytest.mark.scenario("fresh_db_with_model")
+@pytest.mark.scenario("empty_db")
 def test_migrate__declarative__pending_sorted_lexically(migrate: Migrate):
     """Declarative files are pending when out-of-sync and sorted lexically."""
     migrate.declarative_dir.mkdir(parents=True, exist_ok=True)
@@ -1295,3 +1295,29 @@ def test_migrate__declarative__apply_rolls_back_on_bad_script(migrate: Migrate):
 
     # _migrations should have no record — the transaction was rolled back
     assert migrate.engine.select(Migration).fetchall() == []
+
+
+_USER_NAME_INDEX = "DROP INDEX IF EXISTS User_name;\nCREATE UNIQUE INDEX User_name ON User(name);\n"
+
+
+def _index_exists(migrate: Migrate, name: str) -> bool:
+    return migrate.engine.select(SqliteMaster, (SqliteMaster.type == "index") & (SqliteMaster.name == name)).fetchone() is not None
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__declarative__schema_mismatch_takes_precedence_over_declarative_pending(migrate: Migrate):
+    """A declarative script indexing a not-yet-generated table must wait for the generated migration."""
+    migrate.declarative_dir.mkdir(parents=True)
+    (migrate.declarative_dir / "010.idx.sql").write_text(_USER_NAME_INDEX)
+
+    assert migrate.check().state == State.MISMATCH
+
+    migrate.generate()
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["001.create_user.sql", "views_indexes_triggers/010.idx.sql"]
+
+    for script in result.pending:
+        migrate.apply(script)
+    assert migrate.check().state == State.CURRENT
+    assert _index_exists(migrate, "User_name")
