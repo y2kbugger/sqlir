@@ -1,6 +1,7 @@
 from textwrap import dedent
 
 from sqlir.model import TableRow
+from sqlir.rel import is_, is_not, pred
 from sqlir.sql_rel import compile_expr
 
 
@@ -188,3 +189,31 @@ def test_compile_eq_none_through_fk_path():
             AND team.league IS NULL
         )
     """)
+
+
+def test_compile_is_helpers():
+    sql, _ = compile_expr(is_(Gig.cancelled_at, None), {})
+    assert sql == "Gig.cancelled_at IS NULL"
+
+    sql, _ = compile_expr(is_not(Gig.cancelled_at, None), {})
+    assert sql == "Gig.cancelled_at IS NOT NULL"
+
+    params = {}
+    sql, _ = compile_expr(is_(Gig.venue, "Barn"), params)
+    assert sql == "Gig.venue IS :p0"
+    assert params == {"p0": "Barn"}
+
+    sql, _ = compile_expr(is_not(Gig.venue, "Barn"), {})
+    assert sql == "Gig.venue IS NOT :p0"
+
+
+def test_compile_pred_combines_with_exprs():
+    min_len = 3
+    expr = (Gig.venue == "Barn") & pred(t"length({Gig.venue}) >= {min_len}")
+    params = {}
+    sql, _ = compile_expr(expr, params)
+    assert sql == "(Gig.venue = :p0 AND length(Gig.venue) >= :min_len)"
+    assert params == {"p0": "Barn", "min_len": 3}
+
+    sql, _ = compile_expr(pred(t"{Gig.venue} = 'a'") | pred(t"{Gig.venue} = 'b'"), {})
+    assert sql == "(Gig.venue = 'a' OR Gig.venue = 'b')"

@@ -2,7 +2,6 @@
 
 # Bugs
 - FK sql types should be INTEGER_ID not model name or something so that the type coming out is unabiguous.
-- ruff complains about comparison to True, e.g. `if x == True` should be `if x` (is this supported by the Rel rendered)?
 - FK constraints are declared (`REFERENCES Band(id)`), document on how users should set `PRAGMA foreign_keys = ON`, (and what are consequences of leaving it off). what tests /decision wdo we need to make regarding handling this?: `engine.delete(Band, id)` silently orphans every `BandMember.band`; the dangling id then surfaces later as a confusing `RecordNotFoundError` (or `None`?) at `Lazy` load time, far from the delete that caused it. Decide: enable the pragma in `Engine.__init__` (fail fast at delete with `ConstraintError`), or explicitly document/test the orphan behavior. Also decide what a `Lazy` load of a dangling FK should do.
 - `engine.update` lacks the unpersisted-FK guard that `insert` has: `engine.update(Post, 1, band=unsaved_band)` flows through `adapt_value` → `value.id` → binds NULL — silent data corruption on a nullable FK column (and an opaque NOT NULL constraint error otherwise). Raise `UnpersistedRelationshipError` for parity with `insert`. Needs a test either way.
 
@@ -68,7 +67,6 @@ All of these need test cases (or need it verified that a test already exists), e
     - what about plucky or aggregation queries?
     - how to specify types when getting plucky. righ now this is all solved by just making a Row model. JUST forcing make a model leaves LESS things to remember. this seems like a will not implement.
     - This should come after the `__select_query__` feature, which will end up leveraging this.
-- fix typing for rel combos like: `winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]`
 - Find and remove unused exceptions
 - make sql*.py private also rel*.py probably...
 - many-to-many style backrefs

@@ -12,6 +12,7 @@ import apsw
 from sqlir.engine import Engine
 from sqlir.model import Row, TableRow, backref
 from sqlir.lazy import Rows
+from sqlir.rel import is_not, pred
 
 # %% [markdown]
 # # Models
@@ -349,7 +350,8 @@ top_scorers_with_param = t"""
 # even build up reusable predicates
 
 # %%
-winners_today = t"date({MyModel.date}) == date('now')" & (MyModel.score > 99.95)  # ty:ignore[unsupported-operator]
+# wrap raw t-strings in `pred` so they compose with `&` / `|` and type-check as expressions
+winners_today = pred(t"date({MyModel.date}) == date('now')") & (MyModel.score > 99.95)
 
 engine.select(MyModel, winners_today).fetchall()
 
@@ -760,5 +762,31 @@ class AverageScoreBound(Row):
     __select_query__ = t"SELECT avg({MyModel.score}) FROM {MyModel}"
 
 engine.find(AverageScoreBound)
+
+# %% [markdown]
+# ## Comparing to `None` / `True` with `==`, and silencing the tools
+#
+# `Model.field == None` and `Model.flag == True` work (`== None` lowers to `IS NULL`), but ruff flags them (E711 / E712) and its autofix (`Model.flag`) would silently change the query. Likewise a raw t-string mixed into `&` / `|` fails type checking, because a field comparison is typed as the field's Python type:
+#
+# ```python
+# engine.select(MyModel, (MyModel.name != None) & t"{MyModel.score} > 0.5")  # noqa: E711  # ty:ignore[unsupported-operator]
+# ```
+
+# %%
+# Anti-pattern: suppressions on every predicate.
+engine.select(MyModel, (MyModel.name != None) & t"{MyModel.score} > 0.5").fetchall()  # noqa: E711  # ty:ignore[unsupported-operator]
+
+# %% [markdown]
+# **Recommended:** spell SQL `IS` / `IS NOT` comparisons with `is_` / `is_not`, and wrap raw t-strings in `pred` so they compose as typed expressions.
+#
+# ```python
+# from sqlir.rel import is_not, pred
+#
+# engine.select(MyModel, is_not(MyModel.name, None) & pred(t"{MyModel.score} > 0.5"))
+# ```
+
+# %%
+# Recommended: no suppressions needed.
+engine.select(MyModel, is_not(MyModel.name, None) & pred(t"{MyModel.score} > 0.5")).fetchall()
 
 # %%

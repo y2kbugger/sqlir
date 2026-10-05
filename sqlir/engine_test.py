@@ -15,6 +15,7 @@ from .engine import (
     UnpersistedRelationshipError,
 )
 from .model import Row, TableRow
+from .rel import is_, is_not, pred
 
 
 class Team(TableRow):
@@ -271,6 +272,28 @@ def test_select__with_kwargs_no_match(engine: Engine) -> None:
     rows = engine.select(Team, Team.name == "Nobody").fetchall()
 
     assert rows == []
+
+
+class Gig(TableRow):
+    venue: str
+    loud: bool = False
+    cancelled_at: str | None = None
+
+
+def test_select__none_and_bool_predicates(engine: Engine) -> None:
+    engine.ensure_table_created(Gig)
+    engine.insert(Gig("Barn", loud=True))
+    engine.insert(Gig("Hall", cancelled_at="2026-01-01"))
+
+    def venues(target: Any) -> list[str]:
+        return [g.venue for g in engine.select(Gig, target, order="venue")]
+
+    assert venues(Gig.cancelled_at == None) == ["Barn"]  # noqa: E711
+    assert venues(Gig.cancelled_at != None) == ["Hall"]  # noqa: E711
+    assert venues(is_(Gig.cancelled_at, None)) == ["Barn"]
+    assert venues(is_not(Gig.cancelled_at, None)) == ["Hall"]
+    assert venues(is_(Gig.loud, True)) == ["Barn"]
+    assert venues(is_(Gig.loud, False) & pred(t"{Gig.cancelled_at} IS NOT NULL")) == ["Hall"]
 
 
 def test_select__invalid_kwargs(engine: Engine) -> None:

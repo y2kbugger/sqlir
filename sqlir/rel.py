@@ -4,6 +4,7 @@ This module defines the user-facing expression objects built from model field
 access like ``Person.name == \"Alice\"``. It does not emit SQL text.
 """
 
+from string.templatelib import Template
 from typing import Any
 
 # Sentinel: a FieldExpr whose target model has not yet been resolved (lazily).
@@ -132,3 +133,26 @@ class LogicalExpr(Expr):
 
     def __repr__(self) -> str:
         return f"({self.left} {self.op} {self.right})"
+
+
+class TemplateExpr(Expr):
+    def __init__(self, template: Template):
+        self.template = template
+
+    def __repr__(self) -> str:
+        return f"TemplateExpr({self.template!r})"
+
+
+def pred(template: Template) -> Expr:
+    """Wrap a raw-SQL t-string so it composes with `&` / `|` and type-checks as an `Expr`."""
+    return TemplateExpr(template)
+
+
+def is_(field: Any, value: Any) -> Expr:
+    """`field IS value`; spells `== None` / `== True` without tripping ruff E711/E712."""
+    return BinaryExpr(field, "IS", value)
+
+
+def is_not(field: Any, value: Any) -> Expr:
+    """`field IS NOT value`."""
+    return BinaryExpr(field, "IS NOT", value)

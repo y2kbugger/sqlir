@@ -79,11 +79,34 @@ User.manager.name == "Paul"
 (User.name == "Jon") | (User.manager.name == "Paul")
 ```
 
+Comparing with `None` lowers to `IS NULL` / `IS NOT NULL` (never `= NULL`,
+which matches nothing). To keep linters quiet (ruff E711/E712) and get SQL
+`IS` semantics for any value, use `is_` / `is_not`:
+
+```python
+from sqlir.rel import is_, is_not
+
+User.manager == None            # manager IS NULL  (noqa: E711)
+is_(User.manager, None)         # manager IS NULL
+is_not(User.manager, None)      # manager IS NOT NULL
+is_(User.active, True)          # active IS :p0
+```
+
 Raw SQL predicates can be embedded with PEP 750 t-strings so model field
 references stay refactor-safe:
 
 ```python
 t"{User.name} LIKE 'J%'"
+```
+
+A field comparison is statically typed as the field's Python type, so mixing
+a bare t-string into `&` / `|` fails type checking. Wrap it in `pred` to get a
+typed expression that composes:
+
+```python
+from sqlir.rel import pred
+
+(User.age > 30) & pred(t"{User.name} LIKE 'J%'")
 ```
 
 For find/update/delete-by-id, pass the integer id directly as the target

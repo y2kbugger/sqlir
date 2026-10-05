@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from .model import RowMeta, TableRow
-from .rel import BinaryExpr, FieldExpr, LogicalExpr
+from .rel import BinaryExpr, Expr, FieldExpr, LogicalExpr, TemplateExpr
 
 # ---------------------------------------------------------------------------
 # FK path traversal
@@ -122,7 +122,7 @@ def _compile_tstring(expr: Any, params: dict[str, Any], param_idx: int) -> tuple
             sql_parts.append(_build_scalar_subquery(val._model, val._name))  # noqa: SLF001
         elif hasattr(val, "_name"):
             sql_parts.append(val._name)  # noqa: SLF001
-        elif hasattr(val, "op"):
+        elif isinstance(val, Expr):
             sub_sql, param_idx = compile_expr(val, params, param_idx)
             sql_parts.append(sub_sql)
         else:
@@ -131,7 +131,7 @@ def _compile_tstring(expr: Any, params: dict[str, Any], param_idx: int) -> tuple
     return "".join(sql_parts), param_idx
 
 
-_NULL_OPS = {"==": "IS", "!=": "IS NOT"}
+_NULL_OPS = {"==": "IS", "!=": "IS NOT", "IS": "IS", "IS NOT": "IS NOT"}
 
 
 def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple[str, int]:
@@ -140,6 +140,8 @@ def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple
     Returns `(sql_fragment, next_param_idx)`. Bound values are added to
     `params` under generated `p<idx>` names.
     """
+    if isinstance(expr, TemplateExpr):
+        expr = expr.template
     if hasattr(expr, "interpolations") and hasattr(expr, "strings"):
         return _compile_tstring(expr, params, param_idx)
     if isinstance(expr, int):
