@@ -161,3 +161,30 @@ def test_compile_template_string_multi_step_scalar_subquery():
     """)
     assert params == {}
     assert next_idx == 0
+
+
+class Gig(TableRow):
+    venue: str
+    cancelled_at: str | None = None
+
+
+def test_compile_eq_none_is_null():
+    params = {}
+    sql, next_idx = compile_expr(Gig.cancelled_at == None, params)  # noqa: E711
+    assert sql == "Gig.cancelled_at IS NULL"
+    assert params == {}
+    assert next_idx == 0
+
+    sql, _ = compile_expr(Gig.cancelled_at != None, {})  # noqa: E711
+    assert sql == "Gig.cancelled_at IS NOT NULL"
+
+
+def test_compile_eq_none_through_fk_path():
+    sql, _ = compile_expr(Athlete.team.league == None, {})  # noqa: E711
+    assert sql == dd("""
+        EXISTS (
+            SELECT 1 FROM Team team
+            WHERE team.id = Athlete.team
+            AND team.league IS NULL
+        )
+    """)

@@ -131,6 +131,9 @@ def _compile_tstring(expr: Any, params: dict[str, Any], param_idx: int) -> tuple
     return "".join(sql_parts), param_idx
 
 
+_NULL_OPS = {"==": "IS", "!=": "IS NOT"}
+
+
 def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple[str, int]:
     """Compile a rel expression / t-string / id-int to a SQL fragment.
 
@@ -143,6 +146,9 @@ def compile_expr(expr: Any, params: dict[str, Any], param_idx: int = 0) -> tuple
         placeholder, param_idx = _bind_param(int(expr), params, param_idx)
         return f"id = {placeholder}", param_idx
     if isinstance(expr, BinaryExpr):
+        # `= NULL` is never true in SQL, so None comparisons must lower to IS / IS NOT.
+        if expr.right is None and expr.op in _NULL_OPS:
+            return _compile_field_comparison(expr.left, _NULL_OPS[expr.op], "NULL"), param_idx
         placeholder, param_idx = _bind_param(expr.right, params, param_idx)
         return _compile_field_comparison(expr.left, expr.op, placeholder), param_idx
     if isinstance(expr, LogicalExpr):
