@@ -178,6 +178,20 @@ def test_migrate__apply__then_check_is_current(migrate: Migrate):
 
 
 @pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__reads_scripts_as_utf8(migrate: Migrate):
+    """A script is UTF-8 whatever the locale (Windows defaults to cp1252)."""
+    path = migrate.generate()
+    assert path is not None
+    comment = "-- \u017f \ufb01 \u00e9\n"  # long s, fi ligature, e acute: their UTF-8 read as cp1252 is mojibake or an error
+    path.write_text(path.read_text(encoding="utf-8") + comment, encoding="utf-8")
+
+    migrate.apply(migrate.check().pending[0])
+
+    assert migrate.engine.find(Migration, Migration.Id(1)).script.endswith(comment)
+    assert migrate.check().state == State.CURRENT
+
+
+@pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__apply__raises_when_not_pending(migrate: Migrate):
     """apply() raises error when not in PENDING state."""
     # Still in MISMATCH state, no migration generated

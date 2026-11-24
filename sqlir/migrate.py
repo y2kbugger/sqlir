@@ -289,7 +289,8 @@ class Migrate:
                 "-- Create your own files (for example: 010.user_view.sql, 020.user_trigger.sql).\n"
                 "-- Use naming to control dependency order between views, indexes, and triggers.\n"
                 "-- Write scripts idempotently (use DROP IF EXISTS / CREATE IF NOT EXISTS patterns where possible).\n"
-                "-- Avoid placing view/trigger/index definitions in numbered procedural migrations.\n"
+                "-- Avoid placing view/trigger/index definitions in numbered procedural migrations.\n",
+                encoding="utf-8",
             )
         return starter
 
@@ -421,7 +422,7 @@ class Migrate:
         conflicted_missing = []
 
         for number, _name, path in files:
-            current_script = path.read_text().replace("\r\n", "\n")
+            current_script = path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
             if number not in applied:
                 pending.append(path.name)
@@ -444,7 +445,7 @@ class Migrate:
         numbered_ref_pending = bool(ref_pending)
         for path in declarative_files:
             rel_name = f"{self.declarative_dir.name}/{path.name}"
-            current_script = path.read_text().replace("\r\n", "\n")
+            current_script = path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
             if numbered_pending or declarative_applied_latest.get(rel_name) != current_script:
                 pending.append(rel_name)
@@ -577,7 +578,7 @@ class Migrate:
 
         # Write the migration file
         sql_content = "\n\n".join(sql_parts)
-        filepath.write_text(sql_content + "\n")
+        filepath.write_text(sql_content + "\n", encoding="utf-8")
 
         return filepath
 
@@ -610,7 +611,7 @@ class Migrate:
             number = int(match.group(1))
             filepath = self.migrations_dir / filename
 
-        script = filepath.read_text()
+        script = filepath.read_text(encoding="utf-8")
 
         # Normalize newlines
         script = script.replace("\r\n", "\n")
@@ -772,4 +773,4 @@ class Migrate:
         for m in ref_applied.values():
             if m.filename in result.conflicted + result.conflicted_missing:
                 filepath = self.migrations_dir / m.filename
-                filepath.write_text(m.script)
+                filepath.write_text(m.script, encoding="utf-8")
